@@ -1,0 +1,56 @@
+[
+  {
+    "action": "check_duplicate_claimids",
+    "total_duplicate_rows": 0,
+    "action_taken": "none_found"
+  },
+  {
+    "action": "flag_claim_end_before_start",
+    "count_flagged": 0,
+    "action_taken": "kept_with_flag"
+  },
+  {
+    "action": "flag_discharge_before_admission",
+    "count_flagged": 0,
+    "action_taken": "kept_with_flag"
+  },
+  {
+    "action": "note_zero_reimbursement",
+    "count": 20653,
+    "action_taken": "kept"
+  },
+  {
+    "action": "add_missing_value_indicators",
+    "indicators": [
+      "AttendingPhysician_Missing",
+      "AnyPhysician_Missing",
+      "DiagnosisCode_Count",
+      "DiagnosisCode_Missing",
+      "ProcedureCode_Count",
+      "ProcedureCode_Missing"
+    ]
+  },
+  {
+    "action": "join_beneficiary_info_and_compute_claim_age",
+    "claims_before": 558211,
+    "claims_after": 558211,
+    "missing_bene_info": 0,
+    "mean_claim_age": 73.29770497350479
+  },
+  {
+    "action": "flag_claims_after_death",
+    "count_flagged": 0,
+    "action_taken": "kept_with_flag"
+  },
+  {
+    "action": "note_providers_without_claims",
+    "count": 0,
+    "provider_ids": []
+  },
+  {
+    "action": "total_rows_removed",
+    "original": 558211,
+    "final": 558211,
+    "removed": 0
+  }
+]

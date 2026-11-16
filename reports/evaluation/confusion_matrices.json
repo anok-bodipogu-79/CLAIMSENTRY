@@ -1,0 +1,32 @@
+{
+  "xgboost": {
+    "true_negatives": 648,
+    "false_positives": 88,
+    "false_negatives": 12,
+    "true_positives": 64
+  },
+  "ann": {
+    "true_negatives": 599,
+    "false_positives": 137,
+    "false_negatives": 8,
+    "true_positives": 68
+  },
+  "bilstm": {
+    "true_negatives": 604,
+    "false_positives": 132,
+    "false_negatives": 6,
+    "true_positives": 70
+  },
+  "raw_stacking_ensemble": {
+    "true_negatives": 664,
+    "false_positives": 72,
+    "false_negatives": 11,
+    "true_positives": 65
+  },
+  "calibrated_stacking_ensemble": {
+    "true_negatives": 695,
+    "false_positives": 41,
+    "false_negatives": 20,
+    "true_positives": 56
+  }
+}

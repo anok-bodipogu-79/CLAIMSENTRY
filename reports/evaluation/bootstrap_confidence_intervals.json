@@ -1,0 +1,18 @@
+{
+  "pr_auc": {
+    "mean": 0.7245,
+    "ci_lower": 0.6267,
+    "ci_upper": 0.8148
+  },
+  "roc_auc": {
+    "mean": 0.9434,
+    "ci_lower": 0.9142,
+    "ci_upper": 0.9676
+  },
+  "brier_score": {
+    "mean": 0.0472,
+    "ci_lower": 0.037,
+    "ci_upper": 0.0588
+  },
+  "n_bootstraps_valid": 1000
+}

@@ -1,0 +1,33 @@
+{
+  "meta_learner": "LogisticRegression",
+  "base_models": [
+    "xgboost",
+    "ann",
+    "bilstm"
+  ],
+  "risk_thresholds": {
+    "low_medium_cutoff": 0.22,
+    "medium_high_cutoff": 0.7,
+    "selection_split": "validation",
+    "strategy": "precision_recall_investigation_balance",
+    "validation_best_f1": 0.6782
+  },
+  "oof_metrics": {
+    "meta_coefficients": {
+      "xgboost": 1.461984872390706,
+      "ann": 3.4131165901945737,
+      "bilstm": 2.3305063612823105
+    },
+    "meta_intercept": -5.830971092638684,
+    "oof_prauc": 0.6818796756009351,
+    "oof_brier": 0.049332881084770075
+  },
+  "calibration_report": {
+    "raw_validation_brier": 0.04502496714725012,
+    "platt_validation_brier": 0.044815067360116964,
+    "isotonic_validation_brier": 0.03988332040132666,
+    "selected_method": "platt",
+    "improvement_pct": 0.46618531990639395
+  },
+  "random_state": 42
+}

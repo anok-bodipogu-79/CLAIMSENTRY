@@ -1,0 +1,26 @@
+{
+  "LOW": {
+    "provider_count": 715,
+    "pct_of_test_set": 88.05,
+    "fraud_count": 20,
+    "fraud_rate": 0.028,
+    "fraud_rate_pct": 2.8
+  },
+  "MEDIUM": {
+    "provider_count": 83,
+    "pct_of_test_set": 10.22,
+    "fraud_count": 42,
+    "fraud_rate": 0.506,
+    "fraud_rate_pct": 50.6
+  },
+  "HIGH": {
+    "provider_count": 14,
+    "pct_of_test_set": 1.72,
+    "fraud_count": 14,
+    "fraud_rate": 1.0,
+    "fraud_rate_pct": 100.0
+  },
+  "monotonic_risk_progression": true,
+  "low_medium_cutoff": 0.22,
+  "medium_high_cutoff": 0.7
+}

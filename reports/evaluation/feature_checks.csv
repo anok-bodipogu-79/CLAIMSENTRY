@@ -1,0 +1,22 @@
+check,status,detail
+train_one_row_per_provider,PASS,3787 unique / 3787 rows
+val_one_row_per_provider,PASS,811 unique / 811 rows
+test_one_row_per_provider,PASS,812 unique / 812 rows
+no_train_val_overlap,PASS,0 overlapping
+no_train_test_overlap,PASS,0 overlapping
+no_val_test_overlap,PASS,0 overlapping
+feature_column_consistency,PASS,train:53 val:53 test:53
+no_all_nan_columns_train,PASS,all-NaN: []
+no_protected_demographic_attributes,PASS,found: set()
+fraud_label_in_train,PASS,
+fraud_label_in_val,PASS,
+fraud_label_in_test,PASS,
+train_seq_mask_provider_count_match,PASS,"seq:3787, mask:3787, pids:3787, feat:3787"
+train_mask_binary_values,PASS,"min:0.0, max:1.0"
+train_sequence_pids_match_feature_pids,PASS,
+val_seq_mask_provider_count_match,PASS,"seq:811, mask:811, pids:811, feat:811"
+val_mask_binary_values,PASS,"min:0.0, max:1.0"
+val_sequence_pids_match_feature_pids,PASS,
+test_seq_mask_provider_count_match,PASS,"seq:812, mask:812, pids:812, feat:812"
+test_mask_binary_values,PASS,"min:0.0, max:1.0"
+test_sequence_pids_match_feature_pids,PASS,

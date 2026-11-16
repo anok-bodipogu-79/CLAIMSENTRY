@@ -1,0 +1,9 @@
+{
+  "seq_len": 12,
+  "n_features": 6,
+  "lstm_units": 64,
+  "dropout_rate": 0.2,
+  "best_epoch": 13,
+  "best_val_prauc": 0.758418384536133,
+  "random_state": 42
+}

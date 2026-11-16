@@ -1,0 +1,257 @@
+{
+  "total_reimbursement": {
+    "dtype": "int64",
+    "group": "financial",
+    "meaning": "Total insurance reimbursement across all claims ($)"
+  },
+  "avg_reimbursement": {
+    "dtype": "float64",
+    "group": "financial",
+    "meaning": "Mean reimbursement per claim ($)"
+  },
+  "median_reimbursement": {
+    "dtype": "float64",
+    "group": "financial",
+    "meaning": "Median reimbursement per claim ($)"
+  },
+  "max_reimbursement": {
+    "dtype": "int64",
+    "group": "financial",
+    "meaning": "Maximum single-claim reimbursement ($)"
+  },
+  "std_reimbursement": {
+    "dtype": "float64",
+    "group": "financial",
+    "meaning": "Standard deviation of claim reimbursements ($)"
+  },
+  "cv_reimbursement": {
+    "dtype": "float64",
+    "group": "financial",
+    "meaning": "Coefficient of variation of reimbursements (std/mean)"
+  },
+  "ip_total_reimbursement": {
+    "dtype": "float64",
+    "group": "financial",
+    "meaning": "Total reimbursement for inpatient claims ($)"
+  },
+  "op_total_reimbursement": {
+    "dtype": "float64",
+    "group": "financial",
+    "meaning": "Total reimbursement for outpatient claims ($)"
+  },
+  "ip_claim_pct": {
+    "dtype": "float64",
+    "group": "financial",
+    "meaning": "Fraction of claims that are inpatient"
+  },
+  "avg_deductible": {
+    "dtype": "float64",
+    "group": "financial",
+    "meaning": "Average deductible amount paid per claim ($)"
+  },
+  "reimbursement_to_peer_median": {
+    "dtype": "float64",
+    "group": "financial",
+    "meaning": "Provider total reimbursement relative to training peer median"
+  },
+  "total_claim_count": {
+    "dtype": "int64",
+    "group": "behavioural",
+    "meaning": "Total number of claims submitted"
+  },
+  "unique_beneficiaries": {
+    "dtype": "int64",
+    "group": "behavioural",
+    "meaning": "Number of distinct patients served"
+  },
+  "claims_per_beneficiary": {
+    "dtype": "float64",
+    "group": "behavioural",
+    "meaning": "Average claims per patient"
+  },
+  "repeat_bene_count": {
+    "dtype": "int64",
+    "group": "behavioural",
+    "meaning": "Patients with more than one claim at this provider"
+  },
+  "repeat_bene_ratio": {
+    "dtype": "float64",
+    "group": "behavioural",
+    "meaning": "Fraction of patients with repeated claims"
+  },
+  "same_day_repeated_claims": {
+    "dtype": "int64",
+    "group": "behavioural",
+    "meaning": "Count of same-day same-patient repeated claims"
+  },
+  "missing_physician_ratio": {
+    "dtype": "float64",
+    "group": "behavioural",
+    "meaning": "Fraction of claims with missing attending physician"
+  },
+  "distinct_physicians": {
+    "dtype": "int64",
+    "group": "behavioural",
+    "meaning": "Number of distinct attending physicians billed"
+  },
+  "avg_diagnosis_codes": {
+    "dtype": "float64",
+    "group": "behavioural",
+    "meaning": "Average diagnosis codes per claim"
+  },
+  "unique_diagnosis_codes": {
+    "dtype": "int64",
+    "group": "behavioural",
+    "meaning": "Distinct diagnosis codes used across all claims"
+  },
+  "diagnosis_code_entropy": {
+    "dtype": "float64",
+    "group": "behavioural",
+    "meaning": "Shannon entropy of diagnosis code distribution"
+  },
+  "avg_procedure_codes": {
+    "dtype": "float64",
+    "group": "behavioural",
+    "meaning": "Average procedure codes per claim"
+  },
+  "unique_procedure_codes": {
+    "dtype": "int64",
+    "group": "behavioural",
+    "meaning": "Distinct procedure codes used across all claims"
+  },
+  "procedure_code_entropy": {
+    "dtype": "float64",
+    "group": "behavioural",
+    "meaning": "Shannon entropy of procedure code distribution"
+  },
+  "avg_inpatient_length_of_stay": {
+    "dtype": "float64",
+    "group": "behavioural",
+    "meaning": "Average length of stay in days for inpatient claims"
+  },
+  "claim_date_anomaly_count": {
+    "dtype": "int64",
+    "group": "behavioural",
+    "meaning": "Count of claims with ClaimEndDt < ClaimStartDt"
+  },
+  "claim_date_anomaly_ratio": {
+    "dtype": "float64",
+    "group": "behavioural",
+    "meaning": "Fraction of claims with ClaimEndDt < ClaimStartDt"
+  },
+  "discharge_before_admission_count": {
+    "dtype": "int64",
+    "group": "behavioural",
+    "meaning": "Count of inpatient claims with DischargeDt < AdmissionDt"
+  },
+  "discharge_before_admission_ratio": {
+    "dtype": "float64",
+    "group": "behavioural",
+    "meaning": "Fraction of inpatient claims with DischargeDt < AdmissionDt"
+  },
+  "avg_beneficiary_age": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Average patient age at actual claim date (years)"
+  },
+  "avg_chronic_cond_count": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Average number of chronic conditions per patient"
+  },
+  "renal_disease_ratio": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Fraction of patient-claims with renal disease"
+  },
+  "deceased_bene_ratio": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Fraction of patient-claims where patient is deceased"
+  },
+  "claims_after_death_ratio": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Fraction of claims submitted after patient death"
+  },
+  "claims_after_death_count": {
+    "dtype": "int64",
+    "group": "beneficiary",
+    "meaning": "Total claims submitted after patient death"
+  },
+  "avg_part_a_coverage_months": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Average Part A Medicare coverage months (0-12)"
+  },
+  "full_part_a_coverage_ratio": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Fraction of claims where patient had full 12-month Part A coverage"
+  },
+  "avg_part_b_coverage_months": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Average Part B Medicare coverage months (0-12)"
+  },
+  "full_part_b_coverage_ratio": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Fraction of claims where patient had full 12-month Part B coverage"
+  },
+  "avg_ipannualreimbursementamt": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Average beneficiary annual inpatient reimbursement ($)"
+  },
+  "avg_ipannualdeductibleamt": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Average beneficiary annual inpatient deductible ($)"
+  },
+  "avg_opannualreimbursementamt": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Average beneficiary annual outpatient reimbursement ($)"
+  },
+  "avg_opannualdeductibleamt": {
+    "dtype": "float64",
+    "group": "beneficiary",
+    "meaning": "Average beneficiary annual outpatient deductible ($)"
+  },
+  "active_months": {
+    "dtype": "int64",
+    "group": "temporal",
+    "meaning": "Number of distinct calendar months with at least one claim"
+  },
+  "avg_monthly_claims": {
+    "dtype": "float64",
+    "group": "temporal",
+    "meaning": "Average claims per active calendar month"
+  },
+  "max_monthly_claims": {
+    "dtype": "int64",
+    "group": "temporal",
+    "meaning": "Peak claims in any single calendar month"
+  },
+  "avg_monthly_reimbursement": {
+    "dtype": "float64",
+    "group": "temporal",
+    "meaning": "Average total reimbursement per active month ($)"
+  },
+  "monthly_spike_ratio": {
+    "dtype": "float64",
+    "group": "temporal",
+    "meaning": "Peak month to average month claim count ratio"
+  },
+  "avg_monthly_claim_change": {
+    "dtype": "float64",
+    "group": "temporal",
+    "meaning": "Mean absolute month-to-month claim count change"
+  },
+  "avg_days_between_claims": {
+    "dtype": "float64",
+    "group": "temporal",
+    "meaning": "Average calendar days between consecutive claims"
+  }
+}

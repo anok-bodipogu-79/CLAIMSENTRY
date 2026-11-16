@@ -1,0 +1,35 @@
+{
+  "sequence_length": 12,
+  "n_features": 6,
+  "feature_names": [
+    "monthly_claim_count",
+    "log_total_reimbursement",
+    "unique_beneficiaries",
+    "ip_claim_pct",
+    "avg_reimbursement",
+    "repeat_bene_count"
+  ],
+  "feature_descriptions": {
+    "monthly_claim_count": "Number of claims submitted in the month",
+    "log_total_reimbursement": "log(1 + total reimbursement) for the month",
+    "unique_beneficiaries": "Distinct beneficiaries served in the month",
+    "ip_claim_pct": "Fraction of claims that are inpatient",
+    "avg_reimbursement": "Average per-claim reimbursement in the month",
+    "repeat_bene_count": "Beneficiaries with more than one claim in the month"
+  },
+  "mask_definition": {
+    "shape": [
+      812,
+      12
+    ],
+    "values": {
+      "0.0": "Leading padding month (before provider's first observed claim)",
+      "1.0": "Valid observation month (within provider's active window; includes actual zero-claim months)"
+    }
+  },
+  "ordering": "Chronological (most recent seq_len months; leading zero-pad if shorter)",
+  "global_period_range": [
+    "2008-11",
+    "2009-12"
+  ]
+}

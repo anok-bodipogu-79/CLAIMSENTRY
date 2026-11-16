@@ -1,0 +1,4 @@
+Risk_Tier,Provider_Count,Pct_Of_Test_Set,Fraud_Count,Fraud_Rate_Pct
+LOW,715,88.05,20,2.8
+MEDIUM,83,10.22,42,50.6
+HIGH,14,1.72,14,100.0

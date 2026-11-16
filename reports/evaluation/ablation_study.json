@@ -1,0 +1,67 @@
+[
+  {
+    "Configuration": "XGBoost Only",
+    "PR_AUC": 0.6863,
+    "ROC_AUC": 0.9446,
+    "F1_Score": 0.5614,
+    "Precision": 0.4211,
+    "Recall": 0.8421,
+    "Brier_Score": 0.0929,
+    "Decision_Threshold": 0.5,
+    "Delta_PR_AUC_vs_Full": -0.0347,
+    "Delta_Brier_vs_Full": 0.0457,
+    "Status": "Evaluated on Test Split (812 providers)"
+  },
+  {
+    "Configuration": "ANN Only",
+    "PR_AUC": 0.703,
+    "ROC_AUC": 0.9398,
+    "F1_Score": 0.4894,
+    "Precision": 0.335,
+    "Recall": 0.9079,
+    "Brier_Score": 0.1144,
+    "Decision_Threshold": 0.5,
+    "Delta_PR_AUC_vs_Full": -0.018,
+    "Delta_Brier_vs_Full": 0.0672,
+    "Status": "Evaluated on Test Split (812 providers)"
+  },
+  {
+    "Configuration": "Bi-LSTM Only",
+    "PR_AUC": 0.73,
+    "ROC_AUC": 0.9427,
+    "F1_Score": 0.5036,
+    "Precision": 0.3465,
+    "Recall": 0.9211,
+    "Brier_Score": 0.1118,
+    "Decision_Threshold": 0.5,
+    "Delta_PR_AUC_vs_Full": 0.0089,
+    "Delta_Brier_vs_Full": 0.0646,
+    "Status": "Evaluated on Test Split (812 providers)"
+  },
+  {
+    "Configuration": "Ensemble Without Calibration (Raw Stacking)",
+    "PR_AUC": 0.7213,
+    "ROC_AUC": 0.9435,
+    "F1_Score": 0.6103,
+    "Precision": 0.4745,
+    "Recall": 0.8553,
+    "Brier_Score": 0.0481,
+    "Decision_Threshold": 0.22,
+    "Delta_PR_AUC_vs_Full": 0.0003,
+    "Delta_Brier_vs_Full": 0.0009,
+    "Status": "Evaluated on Test Split (812 providers)"
+  },
+  {
+    "Configuration": "Calibrated Stacking Ensemble (Full Framework)",
+    "PR_AUC": 0.721,
+    "ROC_AUC": 0.943,
+    "F1_Score": 0.6474,
+    "Precision": 0.5773,
+    "Recall": 0.7368,
+    "Brier_Score": 0.0472,
+    "Decision_Threshold": 0.22,
+    "Delta_PR_AUC_vs_Full": 0.0,
+    "Delta_Brier_vs_Full": 0.0,
+    "Status": "Evaluated on Test Split (812 providers)"
+  }
+]

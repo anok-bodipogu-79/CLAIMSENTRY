@@ -1,0 +1,9 @@
+file,rows,cols
+Train-1542865627584.csv,5410,2
+Train_Beneficiarydata-1542865627584.csv,138556,25
+Train_Inpatientdata-1542865627584.csv,40474,30
+Train_Outpatientdata-1542865627584.csv,517737,27
+Test-1542969243754.csv,1353,1
+Test_Beneficiarydata-1542969243754.csv,63968,25
+Test_Inpatientdata-1542969243754.csv,9551,30
+Test_Outpatientdata-1542969243754.csv,125841,27

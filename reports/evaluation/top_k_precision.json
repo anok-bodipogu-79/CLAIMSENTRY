@@ -1,0 +1,112 @@
+{
+  "xgboost": {
+    "top_10": {
+      "k": 10,
+      "precision": 0.9,
+      "fraud_count": 9
+    },
+    "top_25": {
+      "k": 25,
+      "precision": 0.8,
+      "fraud_count": 20
+    },
+    "top_50": {
+      "k": 50,
+      "precision": 0.76,
+      "fraud_count": 38
+    },
+    "top_100": {
+      "k": 100,
+      "precision": 0.59,
+      "fraud_count": 59
+    }
+  },
+  "ann": {
+    "top_10": {
+      "k": 10,
+      "precision": 1.0,
+      "fraud_count": 10
+    },
+    "top_25": {
+      "k": 25,
+      "precision": 0.84,
+      "fraud_count": 21
+    },
+    "top_50": {
+      "k": 50,
+      "precision": 0.74,
+      "fraud_count": 37
+    },
+    "top_100": {
+      "k": 100,
+      "precision": 0.54,
+      "fraud_count": 54
+    }
+  },
+  "bilstm": {
+    "top_10": {
+      "k": 10,
+      "precision": 1.0,
+      "fraud_count": 10
+    },
+    "top_25": {
+      "k": 25,
+      "precision": 0.92,
+      "fraud_count": 23
+    },
+    "top_50": {
+      "k": 50,
+      "precision": 0.76,
+      "fraud_count": 38
+    },
+    "top_100": {
+      "k": 100,
+      "precision": 0.55,
+      "fraud_count": 55
+    }
+  },
+  "raw_stacking_ensemble": {
+    "top_10": {
+      "k": 10,
+      "precision": 1.0,
+      "fraud_count": 10
+    },
+    "top_25": {
+      "k": 25,
+      "precision": 0.88,
+      "fraud_count": 22
+    },
+    "top_50": {
+      "k": 50,
+      "precision": 0.74,
+      "fraud_count": 37
+    },
+    "top_100": {
+      "k": 100,
+      "precision": 0.57,
+      "fraud_count": 57
+    }
+  },
+  "calibrated_stacking_ensemble": {
+    "top_10": {
+      "k": 10,
+      "precision": 1.0,
+      "fraud_count": 10
+    },
+    "top_25": {
+      "k": 25,
+      "precision": 0.88,
+      "fraud_count": 22
+    },
+    "top_50": {
+      "k": 50,
+      "precision": 0.74,
+      "fraud_count": 37
+    },
+    "top_100": {
+      "k": 100,
+      "precision": 0.57,
+      "fraud_count": 57
+    }
+  }
+}

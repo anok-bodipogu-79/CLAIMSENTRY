@@ -1,0 +1,313 @@
+{
+  "output_files": [
+    {
+      "file": "data\\processed\\cleaned_training_claims.csv",
+      "exists": true,
+      "size_bytes": 125402295,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\cleaned_training_beneficiaries.csv",
+      "exists": true,
+      "size_bytes": 11309741,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\provider_labels.csv",
+      "exists": true,
+      "size_bytes": 64947,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\train_provider_features.csv",
+      "exists": true,
+      "size_bytes": 1776703,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\validation_provider_features.csv",
+      "exists": true,
+      "size_bytes": 384635,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\test_provider_features.csv",
+      "exists": true,
+      "size_bytes": 383523,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\train_provider_sequences.npy",
+      "exists": true,
+      "size_bytes": 1090784,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\validation_provider_sequences.npy",
+      "exists": true,
+      "size_bytes": 233696,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\test_provider_sequences.npy",
+      "exists": true,
+      "size_bytes": 233984,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\train_provider_masks.npy",
+      "exists": true,
+      "size_bytes": 181904,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\validation_provider_masks.npy",
+      "exists": true,
+      "size_bytes": 39056,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\test_provider_masks.npy",
+      "exists": true,
+      "size_bytes": 39104,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\train_provider_ids.csv",
+      "exists": true,
+      "size_bytes": 45471,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\validation_provider_ids.csv",
+      "exists": true,
+      "size_bytes": 9759,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\test_provider_ids.csv",
+      "exists": true,
+      "size_bytes": 9771,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\train_sequence_provider_ids.csv",
+      "exists": true,
+      "size_bytes": 37882,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\validation_sequence_provider_ids.csv",
+      "exists": true,
+      "size_bytes": 8122,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\test_sequence_provider_ids.csv",
+      "exists": true,
+      "size_bytes": 8132,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\peer_reference_table.json",
+      "exists": true,
+      "size_bytes": 17149,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\feature_spec.json",
+      "exists": true,
+      "size_bytes": 7895,
+      "status": "OK"
+    },
+    {
+      "file": "data\\processed\\sequence_metadata.json",
+      "exists": true,
+      "size_bytes": 1157,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\evaluation\\dataset_record_counts.csv",
+      "exists": true,
+      "size_bytes": 372,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\evaluation\\missing_value_summary.csv",
+      "exists": true,
+      "size_bytes": 5572,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\evaluation\\duplicate_record_summary.csv",
+      "exists": true,
+      "size_bytes": 81,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\evaluation\\cleaning_action_log.json",
+      "exists": true,
+      "size_bytes": 1277,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\evaluation\\feature_checks.csv",
+      "exists": true,
+      "size_bytes": 1073,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\evaluation\\provider_feature_summary.csv",
+      "exists": true,
+      "size_bytes": 5472,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\evaluation\\peer_reference_table.json",
+      "exists": true,
+      "size_bytes": 17149,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\charts\\fraud_label_distribution.png",
+      "exists": true,
+      "size_bytes": 53410,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\charts\\claim_type_distribution.png",
+      "exists": true,
+      "size_bytes": 58713,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\charts\\avg_reimbursement_by_claim_type.png",
+      "exists": true,
+      "size_bytes": 36977,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\charts\\reimbursement_distribution.png",
+      "exists": true,
+      "size_bytes": 73192,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\charts\\reimbursement_by_fraud_label.png",
+      "exists": true,
+      "size_bytes": 32435,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\charts\\provider_feature_distributions.png",
+      "exists": true,
+      "size_bytes": 81918,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\charts\\feature_means_fraud_vs_notfraud.png",
+      "exists": true,
+      "size_bytes": 58472,
+      "status": "OK"
+    },
+    {
+      "file": "reports\\charts\\split_fraud_distribution.png",
+      "exists": true,
+      "size_bytes": 52471,
+      "status": "OK"
+    }
+  ],
+  "provider_overlap": {
+    "train_count": 3787,
+    "val_count": 811,
+    "test_count": 812,
+    "train_val_overlap": 0,
+    "train_test_overlap": 0,
+    "val_test_overlap": 0,
+    "overlap_free": true
+  },
+  "fraud_distribution": {
+    "train": {
+      "total": 3787,
+      "fraud": 354,
+      "fraud_pct": 9.35
+    },
+    "validation": {
+      "total": 811,
+      "fraud": 76,
+      "fraud_pct": 9.37
+    },
+    "test": {
+      "total": 812,
+      "fraud": 76,
+      "fraud_pct": 9.36
+    }
+  },
+  "sequences_and_masks": {
+    "train": {
+      "sequence_shape": [
+        3787,
+        12,
+        6
+      ],
+      "mask_shape": [
+        3787,
+        12
+      ],
+      "seq_has_nan": false,
+      "mask_has_nan": false,
+      "mask_values_valid": true,
+      "mask_mean_valid_months": 10.574069023132324
+    },
+    "validation": {
+      "sequence_shape": [
+        811,
+        12,
+        6
+      ],
+      "mask_shape": [
+        811,
+        12
+      ],
+      "seq_has_nan": false,
+      "mask_has_nan": false,
+      "mask_values_valid": true,
+      "mask_mean_valid_months": 10.55856990814209
+    },
+    "test": {
+      "sequence_shape": [
+        812,
+        12,
+        6
+      ],
+      "mask_shape": [
+        812,
+        12
+      ],
+      "seq_has_nan": false,
+      "mask_has_nan": false,
+      "mask_values_valid": true,
+      "mask_mean_valid_months": 10.612069129943848
+    },
+    "consistent_seq_len": true,
+    "consistent_features": true,
+    "mask_seq_dimension_match": true
+  },
+  "leakage": {
+    "train_val_claim_overlap": 0,
+    "train_test_claim_overlap": 0,
+    "val_test_claim_overlap": 0,
+    "leakage_free": true
+  },
+  "feature_spec": {
+    "n_features_in_spec": 51,
+    "n_features_in_data": 51,
+    "spec_matches_data": true,
+    "missing_in_spec": [],
+    "extra_in_spec": []
+  },
+  "demographic_check": {
+    "clean": true,
+    "found_demographics": []
+  }
+}

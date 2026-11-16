@@ -1,0 +1,7 @@
+{
+  "raw_validation_brier": 0.04502496714725012,
+  "platt_validation_brier": 0.044815067360116964,
+  "isotonic_validation_brier": 0.03988332040132666,
+  "selected_method": "platt",
+  "improvement_pct": 0.46618531990639395
+}

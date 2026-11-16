@@ -1,0 +1,82 @@
+[
+  {
+    "scenario_id": "ROB_01",
+    "name": "Missing Provider Features",
+    "tested_input": "Dictionary with only 1 of 51 required features",
+    "expected_behavior": "Raise ValueError identifying missing columns",
+    "observed_behavior": "PASSED: Correctly raised ValueError: Missing 50 required features: ['avg_reimbursement', 'median_reimbursement', 'max_reimbursement', 'std_reimbursement', 'cv_reimbursement']...",
+    "status": "PASS"
+  },
+  {
+    "scenario_id": "ROB_02",
+    "name": "Invalid Numerical Values (Corrupted Strings)",
+    "tested_input": "Feature dictionary with string values",
+    "expected_behavior": "Gracefully impute or reject without crashing",
+    "observed_behavior": "PASSED: Gracefully imputed invalid string values to 0.0 without crash",
+    "status": "PASS"
+  },
+  {
+    "scenario_id": "ROB_03",
+    "name": "NaN and Infinity Values in Sequences",
+    "tested_input": "Sequence containing np.nan",
+    "expected_behavior": "Strictly raise ValueError rejecting non-finite values",
+    "observed_behavior": "PASSED: Correctly rejected NaN: Sequence contains invalid numerical values: NaN or Infinity detected.",
+    "status": "PASS"
+  },
+  {
+    "scenario_id": "ROB_04",
+    "name": "Missing Monthly Sequence",
+    "tested_input": "sequence=None (synthetic fallback disabled)",
+    "expected_behavior": "Strictly reject missing sequence without silent zero fallback",
+    "observed_behavior": "PASSED: Strictly rejected None sequence: Missing monthly sequence: Genuine provider 12-month temporal sequence is strictly required for multi-modal ensemble prediction. Fallback or synthetic sequences are disabled.",
+    "status": "PASS"
+  },
+  {
+    "scenario_id": "ROB_05",
+    "name": "Invalid Sequence Dimensions",
+    "tested_input": "Sequence of shape (10, 5) instead of (12, 6)",
+    "expected_behavior": "Strictly raise ValueError on shape mismatch",
+    "observed_behavior": "PASSED: Strictly rejected invalid shape: Invalid sequence shape: expected (12, 6), got (10, 5).",
+    "status": "PASS"
+  },
+  {
+    "scenario_id": "ROB_06",
+    "name": "Missing Sequence Mask",
+    "tested_input": "mask=None",
+    "expected_behavior": "Strictly raise ValueError on missing mask",
+    "observed_behavior": "PASSED: Strictly rejected missing mask: Missing sequence validity mask: Monthly sequence validity mask is strictly required for temporal Bi-LSTM inference.",
+    "status": "PASS"
+  },
+  {
+    "scenario_id": "ROB_07",
+    "name": "Invalid Mask Values (Non-Binary)",
+    "tested_input": "Mask with values 0.5",
+    "expected_behavior": "Strictly raise ValueError for non-binary values",
+    "observed_behavior": "PASSED: Strictly rejected non-binary mask: Mask values must be binary indicators (0 for padding, 1 for genuine observation).",
+    "status": "PASS"
+  },
+  {
+    "scenario_id": "ROB_08",
+    "name": "Limited Provider History",
+    "tested_input": "active_months=1, valid_months=1, total_claims=2",
+    "expected_behavior": "Output prediction with warning flag has_limited_history=True",
+    "observed_behavior": "PASSED: Generated prediction with has_limited_history=True and warning flag",
+    "status": "PASS"
+  },
+  {
+    "scenario_id": "ROB_09",
+    "name": "Extremely High Reimbursement Values",
+    "tested_input": "Reimbursement values up to 100 million",
+    "expected_behavior": "Compute probability cleanly bounded in [0, 1] without overflow",
+    "observed_behavior": "PASSED: Probability cleanly bounded in [0, 1]: 0.0284",
+    "status": "PASS"
+  },
+  {
+    "scenario_id": "ROB_10",
+    "name": "Unseen Categorical Values",
+    "tested_input": "Unknown ClaimType 'SuperInpatientUnknown'",
+    "expected_behavior": "Process without crash and treat safely",
+    "observed_behavior": "PASSED: Processed without exception, claim_type gracefully handled: SuperInpatientUnknown",
+    "status": "PASS"
+  }
+]

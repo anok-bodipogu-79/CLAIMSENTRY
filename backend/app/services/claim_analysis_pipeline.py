@@ -489,10 +489,22 @@ class ClaimAnalysisPipeline:
             "original_reimbursement": orig_reimb,
             "currency": cur,
         }
+        p_history = cls.fetch_provider_historical_claims(provider_id=payload.ProviderID, db=db)
+        has_history = p_history is not None and not p_history.empty
+        first_dt = "2009-01-01"
+        last_dt = "2009-12-31"
+        if has_history:
+            if "ClaimStartDt" in p_history and not p_history["ClaimStartDt"].dropna().empty:
+                first_dt = str(p_history["ClaimStartDt"].dropna().min())
+            if "ClaimEndDt" in p_history and not p_history["ClaimEndDt"].dropna().empty:
+                last_dt = str(p_history["ClaimEndDt"].dropna().max())
+            elif "ClaimStartDt" in p_history and not p_history["ClaimStartDt"].dropna().empty:
+                last_dt = str(p_history["ClaimStartDt"].dropna().max())
+
         prov_hist_summary = {
-            "total_claims_recorded": len(p_history) if p_history is not None else provider_res.get("total_claims_analyzed", 255),
-            "first_claim_date": str(p_history["ClaimStartDt"].dropna().min()) if (p_history is not None and "ClaimStartDt" in p_history and not p_history["ClaimStartDt"].dropna().empty) else "2009-01-01",
-            "last_claim_date": str(p_history["ClaimEndDt"].dropna().max()) if (p_history is not None and "ClaimEndDt" in p_history and not p_history["ClaimEndDt"].dropna().empty) else "2009-12-31",
+            "total_claims_recorded": len(p_history) if has_history else provider_res.get("total_claims_analyzed", 255),
+            "first_claim_date": first_dt,
+            "last_claim_date": last_dt,
             "active_months": 12,
         }
         explanation_data = explanation_service.format_explanation(

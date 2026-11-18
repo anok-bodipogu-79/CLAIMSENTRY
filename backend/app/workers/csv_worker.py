@@ -14,6 +14,7 @@ from backend.app.db.models import CSVUpload, CSVUploadRow, Provider, Claim, Bene
 from backend.app.services.prediction_service import prediction_service
 from backend.app.services.anomaly_service import anomaly_service
 from backend.app.services.explanation_service import explanation_service
+from backend.app.services.currency_service import currency_service
 from backend.app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -128,6 +129,22 @@ def process_csv_in_background(upload_id: int, file_content: bytes, db: Optional[
 
         if valid_row_indices:
             df_valid = df_raw.iloc[valid_row_indices].copy().reset_index(drop=True)
+            # Boundary currency conversion: if Currency column has INR, normalize to USD for ML inference
+            has_cur = ("Currency" in df_valid.columns or "currency" in df_valid.columns)
+            if has_cur:
+                cur_col = "Currency" if "Currency" in df_valid.columns else "currency"
+                is_inr = df_valid[cur_col].astype(str).str.strip().str.upper() == "INR"
+                if is_inr.any():
+                    rate = currency_service.get_exchange_rate()
+                    df_valid.loc[is_inr, "InscClaimAmtReimbursed"] = (
+                        df_valid.loc[is_inr, "InscClaimAmtReimbursed"].astype(float) / rate
+                    )
+                    if "DeductibleAmtPaid" in df_valid.columns:
+                        df_valid.loc[is_inr, "DeductibleAmtPaid"] = (
+                            df_valid.loc[is_inr, "DeductibleAmtPaid"].astype(float) / rate
+                        )
+                    df_valid.loc[is_inr, cur_col] = "USD"
+                    df_valid["_currency_converted"] = True
             pipeline_result = prediction_service.predict_claims_pipeline(df_valid)
             analysed_claims_cnt = pipeline_result.get("analysed_claims", 0)
             pipeline_rejected_cnt = pipeline_result.get("rejected_rows", 0)
@@ -296,6 +313,20 @@ def process_csv_in_background(upload_id: int, file_content: bytes, db: Optional[
                     db.add(bene)
                     db.flush()
 
+            # Currency metadata and storage amounts
+            raw_cur = str(row_data.get("Currency", row_data.get("currency", "USD"))).strip().upper() if row_data is not None else "USD"
+            if raw_cur == "INR":
+                rate = currency_service.get_exchange_rate()
+                db_reimb = reimb_amt / rate
+                db_ded = deduct_amt / rate
+                orig_reimb = reimb_amt
+                orig_ded = deduct_amt
+            else:
+                db_reimb = reimb_amt
+                db_ded = deduct_amt
+                orig_reimb = reimb_amt
+                orig_ded = deduct_amt
+
             # Create or update claim record
             claim_rec = db.query(Claim).filter(Claim.claim_id == cid).first()
             if not claim_rec:
@@ -308,8 +339,11 @@ def process_csv_in_background(upload_id: int, file_content: bytes, db: Optional[
                     claim_end_date=clm_end_dt,
                     admission_date=adm_dt,
                     discharge_date=dis_dt,
-                    reimbursement_amount=reimb_amt,
-                    deductible_amount=deduct_amt,
+                    reimbursement_amount=db_reimb,
+                    deductible_amount=db_ded,
+                    currency=raw_cur,
+                    original_reimbursement=orig_reimb,
+                    original_deductible=orig_ded,
                     inpatient_los=los,
                     attending_physician=attending,
                     operating_physician=operating,
@@ -323,8 +357,11 @@ def process_csv_in_background(upload_id: int, file_content: bytes, db: Optional[
                 if bene_id:
                     claim_rec.beneficiary_id = bene_id
                 claim_rec.claim_type = claim_type
-                claim_rec.reimbursement_amount = reimb_amt
-                claim_rec.deductible_amount = deduct_amt
+                claim_rec.reimbursement_amount = db_reimb
+                claim_rec.deductible_amount = db_ded
+                claim_rec.currency = raw_cur
+                claim_rec.original_reimbursement = orig_reimb
+                claim_rec.original_deductible = orig_ded
                 if clm_dt:
                     claim_rec.claim_date = clm_dt
                 if clm_end_dt:

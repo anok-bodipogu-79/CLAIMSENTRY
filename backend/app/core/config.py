@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     DEFAULT_LOW_MEDIUM_THRESHOLD: float = 0.22
     DEFAULT_MEDIUM_HIGH_THRESHOLD: float = 0.70
     
+    # Currency & Exchange Rate Settings
+    APPLICATION_CURRENCY: str = "INR"
+    ML_TRAINING_CURRENCY: str = "USD"
+    INR_PER_USD: Optional[float] = Field(
+        default=83.50,
+        description="Configurable exchange rate: INR per USD. Benchmark reference rate: 83.50 INR per USD."
+    )
+    EXCHANGE_RATE_SOURCE: str = "Reserve Bank of India (RBI) Reference Benchmark (Effective 2024-2025: 83.50 INR/USD)"
+    EXCHANGE_RATE_EFFECTIVE_DATE: str = "2024-11-01"
+
     # Disclaimers & Standard Titles
     REGULATORY_DISCLAIMER: str = "This is a risk assessment to guide investigation. It is not proof of fraud."
     EXPLANATION_TITLE: str = "AI Explanation – Why This Claim Received This Risk Score"
@@ -123,6 +133,18 @@ class Settings(BaseSettings):
                     "A cryptographically secure random secret must be configured."
                 )
         self.JWT_SECRET_KEY = secret
+
+        # 3. Validate exchange rate configuration if specified
+        rate_val = self.INR_PER_USD
+        if rate_val is not None:
+            try:
+                rate_float = float(rate_val)
+                if rate_float <= 0.0:
+                    raise ValueError("INR_PER_USD must be a positive number greater than 0.")
+                self.INR_PER_USD = rate_float
+            except (TypeError, ValueError) as rate_err:
+                raise ValueError(f"Invalid currency configuration: INR_PER_USD must be a positive number (> 0): {rate_err}")
+
         return self
 
     def get_masked_database_url(self) -> str:

@@ -24,11 +24,13 @@ from backend.app.db.models import (
     ClaimAnalysis,
     Explanation,
     User,
+    AuditLog,
 )
 from backend.app.db.schemas import SingleClaimRequest, SingleClaimResponse
 from backend.app.services.prediction_service import prediction_service
 from backend.app.services.anomaly_service import anomaly_service
 from backend.app.services.explanation_service import explanation_service
+from backend.app.services.currency_service import currency_service
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +306,32 @@ class ClaimAnalysisPipeline:
         )
         return pipeline_res
 
+    @staticmethod
+    def formulate_recommendation(risk_tier: str, flags: List[str]) -> str:
+        """Formulate transparent decoupled investigation recommendation."""
+        has_flags = bool(flags)
+        if risk_tier == "HIGH":
+            if has_flags:
+                return (
+                    "HIGH PRIORITY: Full clinical and billing audit recommended due to elevated provider "
+                    "fraud risk accompanied by claim-level billing anomalies."
+                )
+            return "HIGH PRIORITY: Comprehensive provider audit recommended due to elevated systemic fraud risk score."
+        elif risk_tier == "MEDIUM":
+            if has_flags:
+                return (
+                    "MEDIUM PRIORITY: Targeted claims review recommended based on moderate provider risk and specific billing anomalies."
+                )
+            return "MEDIUM PRIORITY: Routine monitoring with focused claim sample audit due to moderate provider statistical risk."
+        else:  # LOW risk tier
+            if has_flags:
+                return (
+                    "ROUTINE MONITORING WITH CLAIM-LEVEL REVIEW: Provider fraud risk is LOW. Specific operational "
+                    "billing anomaly flag(s) detected on this claim warrant administrative verification (e.g. duplicate "
+                    "code check or outlier validation), but do not constitute evidence of systemic provider fraud."
+                )
+            return "LOW PRIORITY: Normal claim adjudication; no statistical fraud indicators detected (Provider Risk: LOW)."
+
     @classmethod
     def analyze_single_claim(
         cls,
@@ -315,7 +343,107 @@ class ClaimAnalysisPipeline:
         Analyze a single claim, run explainability, validate response invariants,
         and persist records to PostgreSQL.
         """
+        # Currency Normalization Boundary
+        cur = (payload.Currency or "USD").strip().upper()
+        rate = currency_service.get_exchange_rate() if cur == "INR" else 1.0
+        orig_reimb = float(payload.InscClaimAmtReimbursed)
+        orig_ded = float(payload.DeductibleAmtPaid or 0.0)
+
+        if cur == "INR":
+            usd_reimb = currency_service.inr_to_usd(orig_reimb, inr_per_usd=rate)
+            usd_ded = currency_service.inr_to_usd(orig_ded, inr_per_usd=rate)
+            applied_rate = rate
+        else:
+            usd_reimb = orig_reimb
+            usd_ded = orig_ded
+            applied_rate = 1.0
+
+        # 0. Duplicate Claim Idempotency & Conflict Check
+        existing_claim = db.query(Claim).filter(Claim.claim_id == payload.ClaimID).first()
+        if existing_claim:
+            reimb_diff = abs(float(existing_claim.reimbursement_amount or 0.0) - usd_reimb)
+            if hasattr(existing_claim, "original_reimbursement") and existing_claim.original_reimbursement is not None and getattr(existing_claim, "currency", None) == cur:
+                reimb_diff = min(reimb_diff, abs(float(existing_claim.original_reimbursement) - orig_reimb))
+            prov_match = (existing_claim.provider_id == payload.ProviderID)
+
+            if prov_match and reimb_diff < 0.01:
+                # Exact duplicate submission: check if existing ClaimAnalysis exists
+                existing_ca = (
+                    db.query(ClaimAnalysis)
+                    .filter(ClaimAnalysis.claim_id == payload.ClaimID)
+                    .order_by(ClaimAnalysis.id.desc())
+                    .first()
+                )
+                if existing_ca and existing_ca.provider_risk_score:
+                    existing_prs = existing_ca.provider_risk_score
+                    existing_expl = (
+                        db.query(Explanation)
+                        .filter(Explanation.claim_analysis_id == existing_ca.id)
+                        .order_by(Explanation.id.desc())
+                        .first()
+                    )
+                    logger.info(f"Exact duplicate claim submission for {payload.ClaimID}: returning existing analysis idempotently.")
+
+                    dup_flags = existing_ca.anomaly_flags or []
+                    dup_tier = existing_prs.risk_tier
+                    dup_rec = cls.formulate_recommendation(dup_tier, dup_flags)
+
+                    findings = [{
+                        "claim_id": existing_claim.claim_id,
+                        "is_anomalous": bool(dup_flags),
+                        "anomaly_count": len(dup_flags),
+                        "anomaly_flags": dup_flags,
+                        "anomaly_score": round(float(existing_ca.anomaly_score or 0.0), 4),
+                        "rules_triggered": existing_ca.anomaly_rules_triggered or [],
+                        "disclaimer": settings.REGULATORY_DISCLAIMER,
+                    }]
+
+                    expl_dict = {
+                        "title": existing_expl.explanation_title if existing_expl else explanation_service.TITLE,
+                        "text": existing_expl.explanation_text if existing_expl else "",
+                        "top_risk_factors": (existing_expl.feature_contributions.get("top_risk_factors", []) if existing_expl and existing_expl.feature_contributions else []),
+                        "positive_contributors": (existing_expl.feature_contributions.get("positive_contributors", []) if existing_expl and existing_expl.feature_contributions else []),
+                        "negative_contributors": (existing_expl.feature_contributions.get("negative_contributors", []) if existing_expl and existing_expl.feature_contributions else []),
+                        "temporal_explanation": None,
+                        "disclaimer": settings.REGULATORY_DISCLAIMER,
+                    }
+
+                    mv_str = (
+                        existing_prs.model_version.version
+                        if existing_prs.model_version and hasattr(existing_prs.model_version, "version")
+                        else settings.MODEL_VERSION
+                    )
+
+                    return SingleClaimResponse(
+                        claim_id=payload.ClaimID,
+                        provider_id=payload.ProviderID,
+                        provider_risk_score=round(float(existing_prs.risk_score), 4),
+                        provider_risk_tier=dup_tier,
+                        model_version=mv_str,
+                        claim_anomaly_findings=findings,
+                        anomaly_flags=dup_flags,
+                        has_anomalies=bool(dup_flags),
+                        explanation_title=explanation_service.TITLE,
+                        explanation=expl_dict,
+                        investigation_recommendation=dup_rec,
+                        disclaimer=settings.REGULATORY_DISCLAIMER,
+                    )
+            else:
+                # Conflicting details for existing ClaimID
+                existing_curr = getattr(existing_claim, "currency", "USD") or "USD"
+                existing_amt_str = f"₹{existing_claim.original_reimbursement:,.2f}" if (existing_curr == "INR" and getattr(existing_claim, "original_reimbursement", None) is not None) else f"${existing_claim.reimbursement_amount:,.2f}"
+                raise AnalysisValidationError(
+                    f"Conflict: Claim ID '{payload.ClaimID}' already exists in database with differing details "
+                    f"(Recorded Provider: {existing_claim.provider_id}, Reimbursement: {existing_amt_str}). "
+                    f"Conflicting duplicate claim submissions are rejected."
+                )
+
         claim_dict = payload.model_dump(exclude_none=True)
+        # Ensure claim_dict amounts are converted to USD for ML model inference
+        claim_dict["InscClaimAmtReimbursed"] = usd_reimb
+        claim_dict["DeductibleAmtPaid"] = usd_ded
+        claim_dict["Currency"] = "USD"
+        claim_dict["_currency_converted"] = True
 
         # 1. Execute shared inference
         try:
@@ -349,16 +477,32 @@ class ClaimAnalysisPipeline:
         claim_anomaly = claims_res[0] if claims_res else {}
         flags = claim_anomaly.get("anomaly_flags", [])
 
-        # 2. Formulate investigation recommendation
-        if risk_tier == "HIGH":
-            recommendation = "HIGH PRIORITY: Full clinical and billing audit recommended due to elevated provider fraud risk."
-        elif risk_tier == "MEDIUM" or bool(flags):
-            recommendation = "MEDIUM PRIORITY: Targeted claims review recommended based on anomalous billing flags."
-        else:
-            recommendation = "LOW PRIORITY: Normal claim adjudication; no statistical fraud indicators detected."
+        # 2. Formulate investigation recommendation (Decoupled Policy)
+        recommendation = cls.formulate_recommendation(risk_tier, flags)
 
-        # 3. Format explanation dynamically
-        explanation_data = explanation_service.format_explanation(provider_res, claims_res)
+        # 3. Format explanation dynamically with Investigator Decision Report
+        claim_meta = {
+            "claim_id": payload.ClaimID,
+            "provider_id": payload.ProviderID,
+            "beneficiary_id": payload.BeneID,
+            "claim_type": payload.ClaimType,
+            "original_reimbursement": orig_reimb,
+            "currency": cur,
+        }
+        prov_hist_summary = {
+            "total_claims_recorded": len(p_history) if p_history is not None else provider_res.get("total_claims_analyzed", 255),
+            "first_claim_date": str(p_history["ClaimStartDt"].dropna().min()) if (p_history is not None and "ClaimStartDt" in p_history and not p_history["ClaimStartDt"].dropna().empty) else "2009-01-01",
+            "last_claim_date": str(p_history["ClaimEndDt"].dropna().max()) if (p_history is not None and "ClaimEndDt" in p_history and not p_history["ClaimEndDt"].dropna().empty) else "2009-12-31",
+            "active_months": 12,
+        }
+        explanation_data = explanation_service.format_explanation(
+            eval_result=provider_res,
+            claim_anomalies=claims_res,
+            currency=cur,
+            exchange_rate=applied_rate,
+            claim_metadata=claim_meta,
+            provider_history_summary=prov_hist_summary,
+        )
 
         # 4. Construct raw response structure
         response_dict = {
@@ -372,8 +516,17 @@ class ClaimAnalysisPipeline:
             "has_anomalies": bool(flags),
             "explanation_title": explanation_service.TITLE,
             "explanation": explanation_data,
+            "investigator_report": explanation_data.get("investigator_report"),
+            "base_model_probabilities": provider_res.get("base_model_probabilities"),
             "investigation_recommendation": recommendation,
             "disclaimer": settings.REGULATORY_DISCLAIMER,
+            "currency": cur,
+            "original_reimbursement": round(orig_reimb, 2),
+            "original_deductible": round(orig_ded, 2),
+            "reimbursement_inr": round(orig_reimb if cur == "INR" else orig_reimb * rate, 2),
+            "reimbursement_usd": round(usd_reimb, 2),
+            "exchange_rate_applied": applied_rate,
+            "exchange_rate_source": currency_service.BENCHMARK_SOURCE,
         }
 
         # 5. Run Universal Response Validation
@@ -427,8 +580,11 @@ class ClaimAnalysisPipeline:
                     admission_date=adm_dt,
                     discharge_date=dis_dt,
                     inpatient_los=los,
-                    reimbursement_amount=payload.InscClaimAmtReimbursed,
-                    deductible_amount=payload.DeductibleAmtPaid or 0.0,
+                    reimbursement_amount=usd_reimb,
+                    deductible_amount=usd_ded,
+                    currency=cur,
+                    original_reimbursement=orig_reimb,
+                    original_deductible=orig_ded,
                     attending_physician=payload.AttendingPhysician,
                     operating_physician=payload.OperatingPhysician,
                     other_physician=payload.OtherPhysician,
@@ -438,8 +594,11 @@ class ClaimAnalysisPipeline:
                 db.add(claim)
                 db.flush()
             else:
-                claim.reimbursement_amount = payload.InscClaimAmtReimbursed
-                claim.deductible_amount = payload.DeductibleAmtPaid or 0.0
+                claim.reimbursement_amount = usd_reimb
+                claim.deductible_amount = usd_ded
+                claim.currency = cur
+                claim.original_reimbursement = orig_reimb
+                claim.original_deductible = orig_ded
                 if clm_start_dt:
                     claim.claim_date = clm_start_dt
                 if clm_end_dt:
@@ -449,6 +608,14 @@ class ClaimAnalysisPipeline:
                 if dis_dt:
                     claim.discharge_date = dis_dt
                 claim.inpatient_los = los
+                if payload.AttendingPhysician:
+                    claim.attending_physician = payload.AttendingPhysician
+                if payload.OperatingPhysician:
+                    claim.operating_physician = payload.OperatingPhysician
+                if payload.OtherPhysician:
+                    claim.other_physician = payload.OtherPhysician
+                if payload.ClmProcedureCode_1:
+                    claim.procedure_codes = [payload.ClmProcedureCode_1]
                 db.flush()
 
             # Provider Risk Score
@@ -474,6 +641,35 @@ class ClaimAnalysisPipeline:
                 claim_analysis_id=ca.id,
                 explanation_data=explanation_data,
             )
+
+            # Audit Log
+            audit_entry = AuditLog(
+                user_id=current_user.id if current_user else None,
+                action="CLAIM_FRAUD_ASSESSMENT",
+                resource_type="CLAIM",
+                resource_id=payload.ClaimID,
+                details={
+                    "claim_id": payload.ClaimID,
+                    "provider_id": payload.ProviderID,
+                    "model_version": settings.MODEL_VERSION,
+                    "currency": cur,
+                    "original_reimbursement": orig_reimb,
+                    "original_deductible": orig_ded,
+                    "reimbursement_usd": usd_reimb,
+                    "deductible_usd": usd_ded,
+                    "exchange_rate_applied": applied_rate,
+                    "exchange_rate_source": currency_service.BENCHMARK_SOURCE,
+                    "base_model_outputs": provider_res.get("base_model_probabilities", {}),
+                    "calibrated_probability": round(prob, 4),
+                    "risk_tier": risk_tier,
+                    "feature_count": provider_res.get("feature_count", 51),
+                    "analysis_id": ca.id,
+                    "anomaly_flag_count": len(flags),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            db.add(audit_entry)
+            db.flush()
 
             db.commit()
         except Exception as e:

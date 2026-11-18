@@ -259,7 +259,7 @@ def test_clean_claim_no_false_anomaly_claims(client, auth_headers):
 
 
 def test_multiple_anomalies_detected_honestly(client, auth_headers):
-    """Trigger multiple distinct anomalies: high reimbursement (>P95) and invalid dates."""
+    """Trigger multiple distinct anomalies: high reimbursement (>P95) and post-death claim."""
     unique_cid = f"CLM_ANOM_{uuid.uuid4().hex[:8]}"
     payload = {
         "ClaimID": unique_cid,
@@ -268,9 +268,10 @@ def test_multiple_anomalies_detected_honestly(client, auth_headers):
         "ClaimType": "Inpatient",
         "InscClaimAmtReimbursed": 75000.0,  # Strictly exceeds $57,000 P95
         "ClaimStartDt": "2009-08-10",
-        "ClaimEndDt": "2009-08-05",        # Invalid date: start > end!
+        "ClaimEndDt": "2009-08-15",
         "AdmissionDt": "2009-08-10",
-        "DischargeDt": "2009-08-05",
+        "DischargeDt": "2009-08-15",
+        "DOD": "2009-01-01",  # Beneficiary date of death prior to claim
         "ClmDiagnosisCode_1": "4019",
         "AttendingPhysician": "PHY31201",
     }
@@ -280,7 +281,7 @@ def test_multiple_anomalies_detected_honestly(client, auth_headers):
 
     assert data["has_anomalies"] is True
     assert "HIGH_REIMBURSEMENT" in data["anomaly_flags"]
-    assert "INVALID_CLAIM_DATES" in data["anomaly_flags"]
+    assert "POST_DEATH_CLAIM" in data["anomaly_flags"]
 
     findings = data["claim_anomaly_findings"]
     f = findings[0]
@@ -333,6 +334,53 @@ def test_temporal_sequence_explanation_validation():
         assert m["observation_type"] == "ACTIVE_CLAIMS"
 
     assert "trajectory_summary" in expl and len(expl["trajectory_summary"]) > 0
+
+
+def test_bilstm_explicit_mask_vs_heuristic_zero_masking():
+    """
+    Verify that an explicit validity mask correctly preserves genuine zero-claim
+    months in the active observation window, whereas a naive heuristic
+    `mask = (seq.abs().sum(dim=-1) > 0)` would incorrectly classify them as padding.
+    """
+    predictor = get_predictor()
+    detector = predictor.lstm_detector
+
+    seq = np.zeros((1, 12, 6), dtype=np.float32)
+    mask_explicit = np.zeros((1, 12), dtype=np.float32)
+
+    # Active observation window: months 6..11 (6 months)
+    mask_explicit[0, 6:] = 1.0
+
+    # Month 6 is an active window month with ZERO claims (all 6 features remain 0.0)
+    # Months 7..11 have active billing patterns
+    for m in range(7, 12):
+        seq[0, m, 0] = 8.0     # monthly_claim_count
+        seq[0, m, 1] = 9.2     # log_total_reimbursement
+        seq[0, m, 2] = 6.0     # unique_beneficiaries
+        seq[0, m, 4] = 1500.0  # avg_reimbursement
+
+    # 1. Demonstrate flaw in naive heuristic:
+    heuristic_mask = (np.abs(seq).sum(axis=-1) > 0).astype(np.float32)
+    # Month 6 has sum == 0, so heuristic falsely flags it as padding (0.0)
+    assert heuristic_mask[0, 6] == 0.0, "Heuristic should have falsely marked zero-claim month as 0.0"
+    assert mask_explicit[0, 6] == 1.0, "Explicit mask must preserve zero-claim month as 1.0 (valid observation)"
+
+    # 2. Verify RobustScaler normalization preserves leading padding zeros (0..5)
+    normalized = detector._normalize_sequences(seq, mask_explicit, fit_scaler=False)
+    for p in range(6):
+        assert np.all(normalized[0, p, :] == 0.0), f"Padded month {p} must remain strictly zero after normalization"
+    
+    # Valid month 6 was in active window, so after RobustScaler centering it is non-zero
+    assert not np.all(normalized[0, 6, :] == 0.0), "Valid month 6 should be transformed by RobustScaler"
+
+    # 3. Verify Bi-LSTM forward inference succeeds cleanly with explicit mask
+    prob_explicit = detector.predict_proba(seq, mask_explicit)
+    prob_heuristic = detector.predict_proba(seq, heuristic_mask)
+
+    assert 0.0 <= prob_explicit[0] <= 1.0
+    assert 0.0 <= prob_heuristic[0] <= 1.0
+    # Different masks result in distinct pooled temporal representations and probabilities
+    assert prob_explicit[0] != prob_heuristic[0]
 
 
 # ══════════════════════════════════════════════════════════════════════════════

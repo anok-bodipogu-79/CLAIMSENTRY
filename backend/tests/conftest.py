@@ -13,6 +13,29 @@ from sqlalchemy.pool import StaticPool
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
+def assert_safe_test_db(url: str):
+    """Enforce that no test can connect to any database other than 'healthguard_test' or SQLite in-memory."""
+    if not url:
+        return
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    dbname = parsed.path.lstrip("/").split("?")[0]
+    
+    if parsed.scheme.startswith("sqlite"):
+        if ":memory:" in url or dbname == "" or "memory" in dbname:
+            return
+        raise RuntimeError(f"CRITICAL SAFETY VIOLATION: Non-memory SQLite path '{dbname}' rejected.")
+    
+    if parsed.scheme.startswith("postgresql"):
+        if dbname != "healthguard_test":
+            raise RuntimeError(
+                f"CRITICAL SAFETY VIOLATION: Test connection targeted database '{dbname}'. "
+                "Tests are strictly restricted to 'healthguard_test' only! "
+                "Target database must be exactly 'healthguard_test'."
+            )
+
+assert_safe_test_db(os.environ.get("DATABASE_URL", ""))
+
 from backend.app.db.database import Base, get_db
 from backend.app.main import app
 import backend.app.db.models  # Ensure all 12 tables are registered in Base.metadata

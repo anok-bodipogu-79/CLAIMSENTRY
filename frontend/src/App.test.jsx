@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import axios from 'axios';
-import App, { formatProbability, getTierBadge } from './App';
+import App, { formatProbability, getTierBadge, formatINR, usdToInr, INR_PER_USD } from './App';
 
 vi.mock('axios', () => {
   const mockAxiosInstance = {
@@ -233,6 +233,72 @@ describe('HealthGuard AI Frontend Integration Tests', () => {
     expect(screen.getByRole('button', { name: /Run Fraud Risk Assessment/i })).toBeInTheDocument();
   });
 
+  it('loads realistic synthetic test data via Fill Sample button and displays notice', async () => {
+    localStorage.setItem('healthguard_token', 'mock_jwt_token');
+    mockAxios.get.mockImplementation((url) => {
+      if (url === '/api/auth/me') {
+        return Promise.resolve({ data: { id: 1, name: 'Investigator', email: 'investigator@healthguard.ai', role: 'investigator' } });
+      }
+      if (url === '/api/overview/summary') {
+        return Promise.resolve({ data: { total_providers: 10, total_claims: 20, high_risk_providers: 1, claims_requiring_investigation: 2, model_version: 'v2', risk_thresholds: { low_medium_cutoff: 0.22, medium_high_cutoff: 0.70 }, disclaimer: 'Test' } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Claim Analyzer$/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^Claim Analyzer$/i }));
+
+    const fillSampleBtn = screen.getByRole('button', { name: /Fill Sample/i });
+    expect(fillSampleBtn).toBeInTheDocument();
+
+    fireEvent.click(fillSampleBtn);
+    expect(screen.getByText(/Synthetic Test Data Loaded/i)).toBeInTheDocument();
+  });
+
+  it('proves that successive clicks produce different valid sample claims with unique IDs and coherent attributes', async () => {
+    localStorage.setItem('healthguard_token', 'mock_jwt_token');
+    mockAxios.get.mockImplementation((url) => {
+      if (url === '/api/auth/me') {
+        return Promise.resolve({ data: { id: 1, name: 'Investigator', email: 'investigator@healthguard.ai', role: 'investigator' } });
+      }
+      if (url === '/api/overview/summary') {
+        return Promise.resolve({ data: { total_providers: 10, total_claims: 20, high_risk_providers: 1, claims_requiring_investigation: 2, model_version: 'v2', risk_thresholds: { low_medium_cutoff: 0.22, medium_high_cutoff: 0.70 }, disclaimer: 'Test' } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Claim Analyzer$/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^Claim Analyzer$/i }));
+
+    const fillSampleBtn = screen.getByRole('button', { name: /Fill Sample/i });
+    const claimIdInput = screen.getByText('Claim ID').parentElement.querySelector('input');
+    const reimbInput = screen.getByText(/Reimbursement \(₹\)/i).parentElement.querySelector('input');
+
+    // First click
+    fireEvent.click(fillSampleBtn);
+    const id1 = claimIdInput.value;
+    const reimb1 = reimbInput.value;
+    expect(id1).toMatch(/^CLM_SYN_/);
+    expect(parseFloat(reimb1)).toBeGreaterThan(0);
+
+    // Second click - must produce different claim ID and varied attributes
+    fireEvent.click(fillSampleBtn);
+    const id2 = claimIdInput.value;
+    const reimb2 = reimbInput.value;
+    expect(id2).toMatch(/^CLM_SYN_/);
+    expect(id1).not.toBe(id2);
+    expect(parseFloat(reimb2)).toBeGreaterThan(0);
+
+    // Third click
+    fireEvent.click(fillSampleBtn);
+    const id3 = claimIdInput.value;
+    expect(id3).toMatch(/^CLM_SYN_/);
+    expect(id3).not.toBe(id2);
+    expect(id3).not.toBe(id1);
+  });
+
   describe('Claim Fraud Analyzer Probability & Risk Tier Validation', () => {
     it('formats valid probability and HIGH risk correctly', () => {
       expect(formatProbability(0.85)).toBe('85.0%');
@@ -281,6 +347,23 @@ describe('HealthGuard AI Frontend Integration Tests', () => {
 
       const { container: c4 } = render(getTierBadge('UNKNOWN_TIER'));
       expect(c4.textContent).toBe('Unavailable');
+    });
+
+    it('formats Indian Rupee (INR) amounts with standard Indian numbering system grouping', () => {
+      expect(formatINR(125000)).toBe('₹1,25,000.00');
+      expect(formatINR(350000.5)).toBe('₹3,50,000.50');
+      expect(formatINR(10000000)).toBe('₹1,00,00,000.00');
+      expect(formatINR(500)).toBe('₹500.00');
+      expect(formatINR(0)).toBe('₹0.00');
+      expect(formatINR(null)).toBe('₹0.00');
+      expect(formatINR(undefined)).toBe('₹0.00');
+    });
+
+    it('converts USD to INR using the verified benchmark exchange rate (83.50)', () => {
+      expect(INR_PER_USD).toBe(83.50);
+      expect(usdToInr(100)).toBe(8350.0);
+      expect(usdToInr(0)).toBe(0);
+      expect(usdToInr(null)).toBe(0);
     });
 
     it('renders Claim Analyzer result with provider_risk_score and provider_risk_tier and avoids NaN%', async () => {
@@ -538,6 +621,116 @@ describe('HealthGuard AI Frontend Integration Tests', () => {
       await waitFor(() => {
         expect(screen.getByTestId('risk-score-value')).toHaveTextContent('15.0%');
       });
+    });
+
+    it('conditionally shows Admission/Discharge dates and auto-calculates Length of Stay for Inpatient claims', async () => {
+      localStorage.setItem('healthguard_token', 'mock_jwt_token');
+      mockAxios.get.mockImplementation(() => Promise.resolve({ data: { distribution: [], recent_activities: [] } }));
+
+      render(<App />);
+      await waitFor(() => expect(screen.getByRole('button', { name: /^Claim Analyzer$/i })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /^Claim Analyzer$/i }));
+
+      // By default Outpatient is selected -> Admission and Discharge dates should NOT be visible
+      expect(screen.queryByText('Admission Date')).not.toBeInTheDocument();
+      expect(screen.queryByText('Discharge Date')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Length of Stay:/i)).not.toBeInTheDocument();
+
+      // Procedure Code 1, Operating Physician, Other Physician must always be present
+      expect(screen.getByText('Procedure Code 1')).toBeInTheDocument();
+      expect(screen.getByText('Operating Physician')).toBeInTheDocument();
+      expect(screen.getByText('Other Physician')).toBeInTheDocument();
+
+      // Switch to Inpatient
+      const claimTypeSelect = screen.getByText('Claim Type').parentElement.querySelector('select');
+      fireEvent.change(claimTypeSelect, { target: { value: 'Inpatient' } });
+
+      // Inpatient fields must now be visible
+      expect(screen.getByText('Admission Date')).toBeInTheDocument();
+      expect(screen.getByText('Discharge Date')).toBeInTheDocument();
+      expect(screen.getByText(/Length of Stay: 0 days/i)).toBeInTheDocument();
+
+      // Fill Admission and Discharge dates
+      const admissionInput = screen.getByText('Admission Date').parentElement.querySelector('input');
+      const dischargeInput = screen.getByText('Discharge Date').parentElement.querySelector('input');
+      fireEvent.change(admissionInput, { target: { value: '2009-04-10' } });
+      fireEvent.change(dischargeInput, { target: { value: '2009-04-17' } });
+
+      // Length of Stay must automatically calculate to 7 days
+      expect(screen.getByText(/Length of Stay: 7 days/i)).toBeInTheDocument();
+
+      // Switch back to Outpatient -> Inpatient fields must disappear
+      fireEvent.change(claimTypeSelect, { target: { value: 'Outpatient' } });
+      expect(screen.queryByText('Admission Date')).not.toBeInTheDocument();
+      expect(screen.queryByText('Discharge Date')).not.toBeInTheDocument();
+    });
+
+    it('validates Inpatient dates and correctly submits payload with all additional fields', async () => {
+      localStorage.setItem('healthguard_token', 'mock_jwt_token');
+      mockAxios.get.mockImplementation(() => Promise.resolve({ data: { distribution: [], recent_activities: [] } }));
+      let capturedPayload = null;
+      mockAxios.post.mockImplementation((url, payload) => {
+        if (url === '/api/analyzer/single') {
+          capturedPayload = payload;
+          return Promise.resolve({
+            data: {
+              claim_id: payload.ClaimID,
+              provider_id: payload.ProviderID,
+              provider_risk_score: 0.75,
+              provider_risk_tier: 'HIGH',
+              model_version: 'v2',
+              has_anomalies: false,
+              anomaly_flags: [],
+              claim_anomaly_findings: [],
+              explanation_title: 'Risk Analysis',
+              explanation: { text: 'High risk inpatient.' },
+              investigation_recommendation: 'Targeted review.',
+              disclaimer: 'Statutory disclaimer.',
+            },
+          });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      render(<App />);
+      await waitFor(() => expect(screen.getByRole('button', { name: /^Claim Analyzer$/i })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /^Claim Analyzer$/i }));
+
+      // Switch to Inpatient
+      const claimTypeSelect = screen.getByText('Claim Type').parentElement.querySelector('select');
+      fireEvent.change(claimTypeSelect, { target: { value: 'Inpatient' } });
+
+      // Set invalid dates: discharge earlier than admission
+      const admissionInput = screen.getByText('Admission Date').parentElement.querySelector('input');
+      const dischargeInput = screen.getByText('Discharge Date').parentElement.querySelector('input');
+      fireEvent.change(admissionInput, { target: { value: '2009-04-20' } });
+      fireEvent.change(dischargeInput, { target: { value: '2009-04-10' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /Run Fraud Risk Assessment/i }));
+      expect(screen.getByText(/Discharge Date cannot be earlier than Admission Date/i)).toBeInTheDocument();
+
+      // Fix dates and fill Procedure Code 1, Operating Physician, Other Physician
+      fireEvent.change(dischargeInput, { target: { value: '2009-04-25' } });
+      const procInput = screen.getByText('Procedure Code 1').parentElement.querySelector('input');
+      const opPhysInput = screen.getByText('Operating Physician').parentElement.querySelector('input');
+      const otherPhysInput = screen.getByText('Other Physician').parentElement.querySelector('input');
+
+      fireEvent.change(procInput, { target: { value: '3893' } });
+      fireEvent.change(opPhysInput, { target: { value: 'PHY40101' } });
+      fireEvent.change(otherPhysInput, { target: { value: 'PHY50201' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /Run Fraud Risk Assessment/i }));
+
+      await waitFor(() => {
+        expect(capturedPayload).not.toBeNull();
+      });
+
+      expect(capturedPayload.ClaimType).toBe('Inpatient');
+      expect(capturedPayload.AdmissionDt).toBe('2009-04-20');
+      expect(capturedPayload.DischargeDt).toBe('2009-04-25');
+      expect(capturedPayload.ClmProcedureCode_1).toBe('3893');
+      expect(capturedPayload.OperatingPhysician).toBe('PHY40101');
+      expect(capturedPayload.OtherPhysician).toBe('PHY50201');
     });
   });
 });

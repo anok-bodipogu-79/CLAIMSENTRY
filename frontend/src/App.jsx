@@ -58,6 +58,24 @@ export const formatProbability = (prob) => {
   return `${(prob * 100).toFixed(1)}%`;
 };
 
+// Helper for Indian Rupee (INR - ₹) formatting using Indian numbering system
+export const INR_PER_USD = 83.50;
+
+export const usdToInr = (usdAmount) => {
+  if (usdAmount === null || usdAmount === undefined || isNaN(usdAmount)) return 0;
+  return Number(usdAmount) * INR_PER_USD;
+};
+
+export const formatINR = (val, showSymbol = true) => {
+  if (val === null || val === undefined || isNaN(val)) return showSymbol ? '₹0.00' : '0.00';
+  const num = Number(val);
+  const formatted = num.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return showSymbol ? `₹${formatted}` : formatted;
+};
+
 // Helper for risk tier badge styling with strict fallback to 'Unavailable' (never defaulting to LOW)
 export const getTierBadge = (tier) => {
   if (!tier || typeof tier !== 'string') {
@@ -145,20 +163,25 @@ export default function App() {
   // Claim Analyzer State (Single Analysis & Batch CSV)
   const [analyzerSubTab, setAnalyzerSubTab] = useState('single');
   const [singleClaimForm, setSingleClaimForm] = useState({
-    claim_id: 'CLM_DEMO_001',
+    claim_id: 'CLM_SMP_1001',
     provider_id: 'PRV51003',
     beneficiary_id: 'BENE11001',
     claim_type: 'Outpatient',
-    reimbursement_amount: '4500.00',
-    deductible_amount: '100.00',
+    reimbursement_amount: '350000.00',
+    deductible_amount: '8000.00',
     claim_start_date: '2009-03-01',
     claim_end_date: '2009-03-01',
+    admission_date: '',
+    discharge_date: '',
     diagnosis_code_1: '4019',
     diagnosis_code_2: '25000',
     procedure_code_1: '',
     attending_physician: 'PHY31201',
-    operating_physician: ''
+    operating_physician: '',
+    other_physician: ''
   });
+  const [sampleNotice, setSampleNotice] = useState(null);
+  const sampleRotationIndexRef = useRef(0);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState(null);
@@ -394,20 +417,68 @@ export default function App() {
     setAnalysisError(null);
     setAnalysisResult(null);
 
+    const reimb = parseFloat(singleClaimForm.reimbursement_amount);
+    const ded = parseFloat(singleClaimForm.deductible_amount);
+
+    if (isNaN(reimb) || reimb < 0) {
+      setAnalysisError('Reimbursement amount must be a non-negative number.');
+      setAnalysisLoading(false);
+      return;
+    }
+    if (reimb > 41750000.0) {
+      setAnalysisError('Reimbursement amount exceeds maximum plausible clinical limit (₹4,17,50,000.00).');
+      setAnalysisLoading(false);
+      return;
+    }
+    if (!isNaN(ded) && (ded < 0 || ded > 2087500.0)) {
+      setAnalysisError('Deductible amount must be between ₹0.00 and ₹20,87,500.00.');
+      setAnalysisLoading(false);
+      return;
+    }
+    if (singleClaimForm.claim_start_date && singleClaimForm.claim_end_date) {
+      if (singleClaimForm.claim_end_date < singleClaimForm.claim_start_date) {
+        setAnalysisError('Claim End Date cannot be earlier than Claim Start Date.');
+        setAnalysisLoading(false);
+        return;
+      }
+    }
+
+    if (singleClaimForm.claim_type === 'Inpatient') {
+      if (!singleClaimForm.admission_date) {
+        setAnalysisError('Admission Date is required for Inpatient claims.');
+        setAnalysisLoading(false);
+        return;
+      }
+      if (!singleClaimForm.discharge_date) {
+        setAnalysisError('Discharge Date is required for Inpatient claims.');
+        setAnalysisLoading(false);
+        return;
+      }
+      if (singleClaimForm.discharge_date < singleClaimForm.admission_date) {
+        setAnalysisError('Discharge Date cannot be earlier than Admission Date.');
+        setAnalysisLoading(false);
+        return;
+      }
+    }
+
     const payload = {
       ClaimID: singleClaimForm.claim_id,
       ProviderID: singleClaimForm.provider_id,
       BeneID: singleClaimForm.beneficiary_id,
       ClaimType: singleClaimForm.claim_type,
-      InscClaimAmtReimbursed: parseFloat(singleClaimForm.reimbursement_amount) || 0.0,
-      DeductibleAmtPaid: parseFloat(singleClaimForm.deductible_amount) || 0.0,
+      InscClaimAmtReimbursed: reimb,
+      Currency: 'INR',
+      DeductibleAmtPaid: isNaN(ded) ? 0.0 : ded,
       ClaimStartDt: singleClaimForm.claim_start_date,
       ClaimEndDt: singleClaimForm.claim_end_date,
+      AdmissionDt: singleClaimForm.claim_type === 'Inpatient' ? (singleClaimForm.admission_date || null) : null,
+      DischargeDt: singleClaimForm.claim_type === 'Inpatient' ? (singleClaimForm.discharge_date || null) : null,
       ClmDiagnosisCode_1: singleClaimForm.diagnosis_code_1 || null,
       ClmDiagnosisCode_2: singleClaimForm.diagnosis_code_2 || null,
       ClmProcedureCode_1: singleClaimForm.procedure_code_1 || null,
       AttendingPhysician: singleClaimForm.attending_physician || null,
-      OperatingPhysician: singleClaimForm.operating_physician || null
+      OperatingPhysician: singleClaimForm.operating_physician || null,
+      OtherPhysician: singleClaimForm.other_physician || null
     };
 
     try {
@@ -426,40 +497,147 @@ export default function App() {
     }
   };
 
-  const loadDemoClaim = (preset = 'high_risk') => {
-    if (preset === 'high_risk') {
-      setSingleClaimForm({
-        claim_id: `CLM_DEMO_${Math.floor(1000 + Math.random() * 9000)}`,
-        provider_id: 'PRV51003',
-        beneficiary_id: 'BENE11001',
-        claim_type: 'Inpatient',
-        reimbursement_amount: '38500.00',
-        deductible_amount: '1068.00',
-        claim_start_date: '2009-04-10',
-        claim_end_date: '2009-04-25',
-        diagnosis_code_1: '4019',
-        diagnosis_code_2: '25000',
-        procedure_code_1: '3893',
-        attending_physician: 'PHY31201',
-        operating_physician: 'PHY31202'
-      });
-    } else {
-      setSingleClaimForm({
-        claim_id: `CLM_DEMO_${Math.floor(1000 + Math.random() * 9000)}`,
-        provider_id: 'PRV51001',
-        beneficiary_id: 'BENE22002',
-        claim_type: 'Outpatient',
-        reimbursement_amount: '450.00',
-        deductible_amount: '50.00',
-        claim_start_date: '2009-06-01',
-        claim_end_date: '2009-06-01',
-        diagnosis_code_1: '4019',
-        diagnosis_code_2: '',
-        procedure_code_1: '',
-        attending_physician: 'PHY40101',
-        operating_physician: ''
-      });
+  const sampleProviders = ['PRV51001', 'PRV51003', 'PRV51004', 'PRV51005', 'PRV51008'];
+  const sampleBeneficiaries = ['BENE11001', 'BENE22002', 'BENE33003', 'BENE44004', 'BENE55005', 'BENE66006', 'BENE77007', 'BENE88008'];
+  const samplePhysicians = ['PHY31201', 'PHY40101', 'PHY50201', 'PHY60301', 'PHY70401', 'PHY80501'];
+
+  const clinicalProfiles = [
+    {
+      category: 'Cardiovascular (Hypertension & Heart Failure)',
+      primaryDiag: '4019',
+      secondaryDiag: '4280',
+      inpatientProc: '3722',
+      inpatientRange: [8500, 24000],
+      outpatientRange: [280, 1150],
+    },
+    {
+      category: 'Endocrine & Metabolic (Diabetes Mellitus)',
+      primaryDiag: '25000',
+      secondaryDiag: '2724',
+      inpatientProc: '3893',
+      inpatientRange: [6500, 19500],
+      outpatientRange: [190, 820],
+    },
+    {
+      category: 'Respiratory (Pneumonia & Airway Disease)',
+      primaryDiag: '486',
+      secondaryDiag: '496',
+      inpatientProc: '9604',
+      inpatientRange: [11000, 31000],
+      outpatientRange: [240, 980],
+    },
+    {
+      category: 'Renal & Urinary (Acute Kidney Injury & UTI)',
+      primaryDiag: '5849',
+      secondaryDiag: '5990',
+      inpatientProc: '3995',
+      inpatientRange: [9200, 27500],
+      outpatientRange: [310, 1420],
+    },
+    {
+      category: 'Musculoskeletal (Degenerative Joint Disease)',
+      primaryDiag: '71590',
+      secondaryDiag: '7242',
+      inpatientProc: '8151',
+      inpatientRange: [16000, 38000],
+      outpatientRange: [350, 1680],
+    },
+    {
+      category: 'Cerebrovascular (Cerebral Ischemia)',
+      primaryDiag: '43491',
+      secondaryDiag: '4019',
+      inpatientProc: '8872',
+      inpatientRange: [14000, 35000],
+      outpatientRange: [420, 1850],
     }
+  ];
+
+  const generateCollisionResistantId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `CLM_SYN_${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    }
+    const randPart = Math.floor(100000 + Math.random() * 900000);
+    return `CLM_SYN_${Date.now().toString().slice(-4)}${randPart}`;
+  };
+
+  const loadSampleClaim = () => {
+    const clickCount = sampleRotationIndexRef.current;
+    sampleRotationIndexRef.current += 1;
+
+    // Pick clinical profile cycling deterministically through categories
+    const profile = clinicalProfiles[clickCount % clinicalProfiles.length];
+    
+    // Alternate between Outpatient and Inpatient profiles
+    const isInpatient = clickCount % 2 === 1;
+
+    // Distinct provider and beneficiary assignments
+    const provider = sampleProviders[clickCount % sampleProviders.length];
+    const beneficiary = sampleBeneficiaries[(clickCount * 3 + 1) % sampleBeneficiaries.length];
+    const attendingPhys = samplePhysicians[clickCount % samplePhysicians.length];
+    const operatingPhys = isInpatient ? samplePhysicians[(clickCount + 2) % samplePhysicians.length] : '';
+    const otherPhys = isInpatient ? samplePhysicians[(clickCount + 4) % samplePhysicians.length] : '';
+
+    // Generate coherent 2009 dates
+    const month = ((clickCount * 2 + 1) % 11) + 1; // Month 1-11
+    const monthStr = month < 10 ? `0${month}` : `${month}`;
+    const startDay = ((clickCount * 5 + 3) % 20) + 1; // Day 1-20
+    const startDayStr = startDay < 10 ? `0${startDay}` : `${startDay}`;
+    const claimStart = `2009-${monthStr}-${startDayStr}`;
+
+    let claimEnd = claimStart;
+    let admissionDate = '';
+    let dischargeDate = '';
+    let reimbursement = '';
+    let deductible = '';
+    let procCode = '';
+
+    if (isInpatient) {
+      const stayDays = ((clickCount * 2) % 9) + 3; // 3 to 11 days stay
+      const endDay = startDay + stayDays;
+      const endDayStr = endDay < 10 ? `0${endDay}` : `${endDay}`;
+      claimEnd = `2009-${monthStr}-${endDayStr}`;
+      admissionDate = claimStart;
+      dischargeDate = claimEnd;
+      
+      const [minAmt, maxAmt] = profile.inpatientRange;
+      const amtUsd = minAmt + ((clickCount * 1750 + Math.floor(Math.random() * 800)) % (maxAmt - minAmt));
+      const amtInr = amtUsd * 83.50; // Illustrative INR value (at 83.50 INR/USD)
+      reimbursement = amtInr.toFixed(2);
+      deductible = (1068.0 * 83.50).toFixed(2); // Illustrative INR inpatient deductible
+      procCode = profile.inpatientProc;
+    } else {
+      const [minAmt, maxAmt] = profile.outpatientRange;
+      const amtUsd = minAmt + ((clickCount * 135 + Math.floor(Math.random() * 120)) % (maxAmt - minAmt));
+      const amtInr = amtUsd * 83.50; // Illustrative INR value (at 83.50 INR/USD)
+      reimbursement = amtInr.toFixed(2);
+      deductible = ((clickCount % 3 === 0 ? 0.0 : 50.0 + (clickCount * 15) % 85) * 83.50).toFixed(2);
+      procCode = '';
+    }
+
+    const uniqueClaimId = generateCollisionResistantId();
+
+    const generatedForm = {
+      claim_id: uniqueClaimId,
+      provider_id: provider,
+      beneficiary_id: beneficiary,
+      claim_type: isInpatient ? 'Inpatient' : 'Outpatient',
+      reimbursement_amount: reimbursement,
+      deductible_amount: deductible,
+      claim_start_date: claimStart,
+      claim_end_date: claimEnd,
+      admission_date: admissionDate,
+      discharge_date: dischargeDate,
+      diagnosis_code_1: profile.primaryDiag,
+      diagnosis_code_2: profile.secondaryDiag,
+      procedure_code_1: procCode,
+      attending_physician: attendingPhys,
+      operating_physician: operatingPhys,
+      other_physician: otherPhys
+    };
+
+    setSingleClaimForm(generatedForm);
+    const inrDisplay = `₹${Number(reimbursement).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    setSampleNotice(`Synthetic Test Data Loaded: ${profile.category} (${generatedForm.claim_type} for ${provider}, ${inrDisplay}). Collision-resistant ID ${uniqueClaimId} staged in form (not yet persisted).`);
   };
 
   const handleCsvUpload = async (e) => {
@@ -483,6 +661,20 @@ export default function App() {
       setCsvUploadError(err.response?.data?.detail || 'Batch CSV upload failed.');
       setCsvStatusLoading(false);
     }
+  };
+
+  const downloadCsvTemplate = () => {
+    const csvContent = "data:text/csv;charset=utf-8," +
+      "ClaimID,ProviderID,BeneID,ClaimType,InscClaimAmtReimbursed,DeductibleAmtPaid,Currency,ClaimStartDt,ClaimEndDt,AdmissionDt,DischargeDt,AttendingPhysician,OperatingPhysician,OtherPhysician,ClmDiagnosisCode_1,ClmProcedureCode_1\n" +
+      "CLM_INR_001,PRV51003,BENE11001,Inpatient,350000.00,8000.00,INR,2009-03-01,2009-03-07,2009-03-01,2009-03-07,PHY31201,PHY42109,PHY53110,4019,3722\n" +
+      "CLM_INR_002,PRV51001,BENE20001,Outpatient,12500.00,1000.00,INR,2009-05-01,2009-05-01,,,,PHY10001,,,25000,\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "healthguard_claims_inr_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const pollCsvUploadStatus = async (uploadId) => {
@@ -1041,7 +1233,7 @@ export default function App() {
                               <td className="p-3 font-mono font-bold text-slate-900">{p.provider_id}</td>
                               <td className="p-3 font-medium text-slate-800">{p.provider_name}</td>
                               <td className="p-3 font-medium">{p.total_claims}</td>
-                              <td className="p-3 font-mono font-medium">${(p.total_reimbursement || 0).toLocaleString()}</td>
+                              <td className="p-3 font-mono font-medium">{formatINR(usdToInr(p.total_reimbursement))}</td>
                               <td className="p-3">{getTierBadge(p.risk_tier)}</td>
                               <td className="p-3 font-mono font-medium">{p.risk_score ? p.risk_score.toFixed(4) : '—'}</td>
                               <td className="p-3">
@@ -1104,7 +1296,7 @@ export default function App() {
                       </div>
                       <div>
                         <span className="text-slate-400 font-medium block">Reimbursement</span>
-                        <span className="text-base font-bold text-slate-900">${(selectedProvider.total_reimbursement || 0).toLocaleString()}</span>
+                        <span className="text-base font-bold text-slate-900">{formatINR(usdToInr(selectedProvider.total_reimbursement))}</span>
                       </div>
                       <div>
                         <span className="text-slate-400 font-medium block">Risk Tier</span>
@@ -1212,7 +1404,7 @@ export default function App() {
                               <td className="p-3 font-mono text-slate-600">{c.provider_id}</td>
                               <td className="p-3 font-medium text-slate-800">{c.claim_type}</td>
                               <td className="p-3 text-slate-500">{c.claim_date ? new Date(c.claim_date).toLocaleDateString() : '—'}</td>
-                              <td className="p-3 font-mono font-medium">${(c.reimbursement_amount || 0).toFixed(2)}</td>
+                              <td className="p-3 font-mono font-medium">{formatINR(c.currency === 'INR' && c.original_reimbursement ? c.original_reimbursement : usdToInr(c.reimbursement_amount))}</td>
                               <td className="p-3">
                                 {c.has_anomalies ? (
                                   <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700 border border-red-200">
@@ -1294,7 +1486,7 @@ export default function App() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs">
                       <div>
                         <span className="text-slate-400 font-medium block">Reimbursement</span>
-                        <span className="text-base font-bold text-slate-900">${(selectedClaim.reimbursement_amount || 0).toFixed(2)}</span>
+                        <span className="text-base font-bold text-slate-900">{formatINR(selectedClaim.currency === 'INR' && selectedClaim.original_reimbursement ? selectedClaim.original_reimbursement : usdToInr(selectedClaim.reimbursement_amount))}</span>
                       </div>
                       <div>
                         <span className="text-slate-400 font-medium block">Service Date</span>
@@ -1371,28 +1563,50 @@ export default function App() {
 
                 {/* ── Sub-tab 1: Single Claim Analysis ── */}
                 {analyzerSubTab === 'single' && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-6">
+                    {/* INR Currency Support & Independent Clinical Validation Notice Banner */}
+                    <div className="p-3.5 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start space-x-2.5">
+                      <span className="text-base shrink-0">🇮🇳</span>
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-amber-950">Indian Rupee (INR – ₹) Mode Active</span>
+                        <p className="text-[11px] text-amber-800 leading-relaxed">
+                          Reimbursement and deductible amounts are entered and displayed in Indian Rupees (₹). Values are mapped to the underlying multi-modal ensemble model via the verified RBI reference benchmark (₹83.50/USD). 
+                          <strong> Model Scope:</strong> The ensemble was trained on US CMS Medicare claims; deployment for Indian healthcare insurance fraud investigation requires independent clinical validation on domestic claims.
+                        </p>
+                      </div>
+                    </div>
+
                     {/* Input Form */}
                     <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
                       <div className="flex justify-between items-center">
-                        <h3 className="text-sm font-bold text-slate-900">Claim Attributes</h3>
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900">Claim Attributes</h3>
+                          <p className="text-[11px] text-slate-500">Provide individual claim variables for multi-modal risk scoring.</p>
+                        </div>
                         <div className="flex space-x-2">
                           <button
                             type="button"
-                            onClick={() => loadDemoClaim('high_risk')}
-                            className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md text-[11px] font-semibold transition"
+                            onClick={loadSampleClaim}
+                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md text-[11px] font-semibold transition flex items-center space-x-1"
+                            title="Rotate through realistic Medicare synthetic sample cases"
                           >
-                            Fill High-Risk Demo
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => loadDemoClaim('low_risk')}
-                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-md text-[11px] font-semibold transition"
-                          >
-                            Fill Low-Risk Demo
+                            <span>Fill Sample</span>
                           </button>
                         </div>
                       </div>
+
+                      {sampleNotice && (
+                        <div className="p-2.5 bg-indigo-50/80 border border-indigo-200 rounded-lg text-xs text-indigo-800 flex justify-between items-center">
+                          <span>ℹ️ {sampleNotice}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSampleNotice(null)}
+                            className="text-indigo-400 hover:text-indigo-700 ml-2 font-bold"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
 
                       <form onSubmit={handleSingleClaimSubmit} className="space-y-4">
                         <div className="grid grid-cols-2 gap-3">
@@ -1442,12 +1656,55 @@ export default function App() {
                           </div>
                         </div>
 
+                        {singleClaimForm.claim_type === 'Inpatient' && (
+                          <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-lg space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wide flex items-center space-x-1">
+                                <span>🏥 Inpatient Hospitalization</span>
+                              </span>
+                              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-800 font-semibold rounded border border-blue-200">
+                                Length of Stay: {(() => {
+                                  if (!singleClaimForm.admission_date || !singleClaimForm.discharge_date) return '0 days';
+                                  const d1 = new Date(singleClaimForm.admission_date);
+                                  const d2 = new Date(singleClaimForm.discharge_date);
+                                  const diff = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+                                  return diff >= 0 ? `${diff} day${diff === 1 ? '' : 's'}` : 'Invalid (Discharge < Admission)';
+                                })()}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Admission Date</label>
+                                <input
+                                  type="date"
+                                  required={singleClaimForm.claim_type === 'Inpatient'}
+                                  value={singleClaimForm.admission_date}
+                                  onChange={(e) => setSingleClaimForm({ ...singleClaimForm, admission_date: e.target.value })}
+                                  className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Discharge Date</label>
+                                <input
+                                  type="date"
+                                  required={singleClaimForm.claim_type === 'Inpatient'}
+                                  value={singleClaimForm.discharge_date}
+                                  onChange={(e) => setSingleClaimForm({ ...singleClaimForm, discharge_date: e.target.value })}
+                                  className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs font-semibold text-slate-700 mb-1">Reimbursement ($)</label>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Reimbursement (₹) [Max: ₹4,17,50,000]</label>
                             <input
                               type="number"
                               step="0.01"
+                              min="0"
+                              max="41750000"
                               required
                               value={singleClaimForm.reimbursement_amount}
                               onChange={(e) => setSingleClaimForm({ ...singleClaimForm, reimbursement_amount: e.target.value })}
@@ -1455,10 +1712,12 @@ export default function App() {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-slate-700 mb-1">Deductible ($)</label>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Deductible (₹) [Max: ₹20,87,500]</label>
                             <input
                               type="number"
                               step="0.01"
+                              min="0"
+                              max="2087500"
                               required
                               value={singleClaimForm.deductible_amount}
                               onChange={(e) => setSingleClaimForm({ ...singleClaimForm, deductible_amount: e.target.value })}
@@ -1498,8 +1757,22 @@ export default function App() {
                               value={singleClaimForm.diagnosis_code_1}
                               onChange={(e) => setSingleClaimForm({ ...singleClaimForm, diagnosis_code_1: e.target.value })}
                               className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                              placeholder="e.g. 4019"
                             />
                           </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Procedure Code 1</label>
+                            <input
+                              type="text"
+                              value={singleClaimForm.procedure_code_1}
+                              onChange={(e) => setSingleClaimForm({ ...singleClaimForm, procedure_code_1: e.target.value })}
+                              className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                              placeholder="e.g. 3893"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           <div>
                             <label className="block text-xs font-semibold text-slate-700 mb-1">Attending Physician</label>
                             <input
@@ -1507,6 +1780,27 @@ export default function App() {
                               value={singleClaimForm.attending_physician}
                               onChange={(e) => setSingleClaimForm({ ...singleClaimForm, attending_physician: e.target.value })}
                               className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                              placeholder="e.g. PHY31201"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Operating Physician</label>
+                            <input
+                              type="text"
+                              value={singleClaimForm.operating_physician}
+                              onChange={(e) => setSingleClaimForm({ ...singleClaimForm, operating_physician: e.target.value })}
+                              className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                              placeholder="Optional (e.g. PHY40101)"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">Other Physician</label>
+                            <input
+                              type="text"
+                              value={singleClaimForm.other_physician}
+                              onChange={(e) => setSingleClaimForm({ ...singleClaimForm, other_physician: e.target.value })}
+                              className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                              placeholder="Optional (e.g. PHY50201)"
                             />
                           </div>
                         </div>
@@ -1618,7 +1912,7 @@ export default function App() {
                                     <table className="w-full text-left text-xs bg-white rounded-lg border border-slate-200 divide-y divide-slate-100">
                                       <thead className="bg-slate-100 text-slate-600 text-[11px]">
                                         <tr>
-                                          <th className="py-1.5 px-3 font-semibold">Feature</th>
+                                          <th className="py-1.5 px-3 font-semibold">Feature & Scope</th>
                                           <th className="py-1.5 px-3 font-semibold">Observed Value</th>
                                           <th className="py-1.5 px-3 font-semibold">SHAP Impact</th>
                                           <th className="py-1.5 px-3 font-semibold">Effect</th>
@@ -1630,10 +1924,21 @@ export default function App() {
                                           const sVal = typeof f.shap_value === 'number' ? f.shap_value : parseFloat(f.shap_value) || 0;
                                           const isElevating = f.direction === 'INCREASES_FRAUD_RISK' || sVal > 0;
                                           const actVal = f.actual_value !== undefined ? f.actual_value : (f.feature_value !== undefined ? f.feature_value : 'N/A');
+                                          const scopeBadge = f.scope_badge || (f.feature?.includes('to_peer_median') ? 'Peer Benchmark' : 'Provider History');
                                           return (
                                             <tr key={idx} className="hover:bg-slate-50">
-                                              <td className="py-1.5 px-3 font-mono font-medium text-slate-900">{f.feature}</td>
-                                              <td className="py-1.5 px-3 font-mono">{typeof actVal === 'number' ? actVal.toLocaleString() : actVal}</td>
+                                              <td className="py-1.5 px-3">
+                                                <span className="font-mono font-medium text-slate-900 block">{f.display_name || f.feature}</span>
+                                                {f.display_name && f.display_name !== f.feature && (
+                                                  <span className="text-[10px] text-slate-400 font-mono block">{f.feature}</span>
+                                                )}
+                                                <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold ${scopeBadge === 'Peer Benchmark' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                  {scopeBadge}
+                                                </span>
+                                              </td>
+                                              <td className="py-1.5 px-3 font-mono font-medium">
+                                                {typeof actVal === 'number' ? actVal.toLocaleString() : actVal}
+                                              </td>
                                               <td className="py-1.5 px-3 font-mono font-semibold">{sVal > 0 ? `+${sVal.toFixed(4)}` : sVal.toFixed(4)}</td>
                                               <td className="py-1.5 px-3">
                                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isElevating ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -1646,6 +1951,9 @@ export default function App() {
                                         })}
                                       </tbody>
                                     </table>
+                                  </div>
+                                  <div className="p-2.5 bg-blue-50/70 border border-blue-100 rounded-lg text-[11px] text-blue-900 leading-relaxed">
+                                    <span className="font-bold">Feature Provenance Notice:</span> Provider History features reflect cumulative aggregates across all historical claims on file for this healthcare provider (plus the current claim), whereas claim anomaly findings reflect this specific submitted claim.
                                   </div>
                                 </div>
                               )}
@@ -1773,13 +2081,23 @@ export default function App() {
                           />
                         </div>
 
-                        <button
-                          type="submit"
-                          disabled={!csvFile || csvStatusLoading}
-                          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition disabled:opacity-50"
-                        >
-                          {csvStatusLoading ? 'Processing Batch in Background...' : 'Upload & Process Batch'}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            type="submit"
+                            disabled={!csvFile || csvStatusLoading}
+                            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition disabled:opacity-50"
+                          >
+                            {csvStatusLoading ? 'Processing Batch in Background...' : 'Upload & Process Batch'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={downloadCsvTemplate}
+                            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-300 transition flex items-center space-x-1.5"
+                          >
+                            <span>📥</span>
+                            <span>Download CSV Template (INR – ₹)</span>
+                          </button>
+                        </div>
                       </form>
 
                       {csvUploadError && (
@@ -1868,9 +2186,7 @@ export default function App() {
                                         <td className="p-2.5 font-mono text-slate-600">{c.provider_id}</td>
                                         <td className="p-2.5">{c.claim_type}</td>
                                         <td className="p-2.5 font-mono">
-                                          ${typeof c.reimbursement_amount === 'number' && Number.isFinite(c.reimbursement_amount)
-                                            ? c.reimbursement_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                                            : '0.00'}
+                                          {formatINR(c.currency === 'INR' && c.original_reimbursement ? c.original_reimbursement : usdToInr(c.reimbursement_amount))}
                                         </td>
                                         <td className="p-2.5">
                                           {c.has_anomalies || (c.anomaly_flags && c.anomaly_flags.length > 0) ? (

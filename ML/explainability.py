@@ -146,8 +146,28 @@ class FraudExplainer:
             if p50 is not None:
                 summary_str += f" (Peer median: {round(p50, 2)})"
 
+            # Feature provenance & human-readable scope
+            is_peer_metric = "to_peer_median" in feat_name
+            feat_scope = "PEER_RELATIVE_BENCHMARK" if is_peer_metric else "PROVIDER_HISTORY_AGGREGATE"
+            scope_badge = "Peer Benchmark" if is_peer_metric else "Provider History"
+
+            display_title = feat_name.replace("_", " ").title()
+            if "To Peer Median" in display_title:
+                display_title = display_title.replace("To Peer Median", "(Ratio vs Peer Median)")
+            elif feat_name == "total_reimbursement":
+                display_title = "Provider Cumulative Reimbursement"
+            elif feat_name == "total_claim_count":
+                display_title = "Provider Cumulative Claim Count"
+            elif feat_name == "unique_beneficiaries":
+                display_title = "Provider Distinct Patients"
+            elif feat_name == "avg_reimbursement":
+                display_title = "Provider Average Reimbursement"
+
             contributions.append({
                 "feature": feat_name,
+                "display_name": display_title,
+                "feature_scope": feat_scope,
+                "scope_badge": scope_badge,
                 "shap_value": round(shap_score, 5),
                 "actual_value": round(actual_val, 4),
                 "feature_value": round(actual_val, 4),

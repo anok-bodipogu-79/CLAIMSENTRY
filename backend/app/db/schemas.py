@@ -2,9 +2,18 @@
 HealthGuard AI - Pydantic Request & Response Schemas
 """
 
+import math
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional, Dict, Any, Union
-from pydantic import BaseModel, EmailStr, Field
+import pandas as pd
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+
+class Currency(str, Enum):
+    INR = "INR"
+    USD = "USD"
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -195,16 +204,17 @@ class ClaimAnalysisDetail(BaseModel):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class SingleClaimRequest(BaseModel):
-    ClaimID: str = Field(..., example="CLM100234")
-    ProviderID: str = Field(..., example="PRV51003")
-    BeneID: Optional[str] = Field(default=None, example="BENE11001")
+    ClaimID: str = Field(..., min_length=2, max_length=50, example="CLM_SMP_1001")
+    ProviderID: str = Field(..., min_length=2, max_length=50, example="PRV51003")
+    BeneID: Optional[str] = Field(default=None, max_length=50, example="BENE11001")
     InscClaimAmtReimbursed: float = Field(..., ge=0.0, example=3500.0)
+    Currency: Optional[str] = Field(default=None, example="INR", description="Input currency: INR or USD. Defaults to USD for legacy CMS records, or INR from user application.")
     ClaimStartDt: str = Field(..., example="2009-03-01")
     ClaimEndDt: Optional[str] = Field(default=None, example="2009-03-05")
     AdmissionDt: Optional[str] = Field(default=None, example="2009-03-01")
     DischargeDt: Optional[str] = Field(default=None, example="2009-03-05")
     ClaimType: Optional[str] = Field(default="Outpatient", example="Outpatient")
-    DeductibleAmtPaid: Optional[float] = Field(default=0.0, example=100.0)
+    DeductibleAmtPaid: Optional[float] = Field(default=0.0, ge=0.0, example=100.0)
     AttendingPhysician: Optional[str] = Field(default=None, example="PHY31201")
     OperatingPhysician: Optional[str] = Field(default=None)
     OtherPhysician: Optional[str] = Field(default=None)
@@ -213,6 +223,76 @@ class SingleClaimRequest(BaseModel):
     ClmAdmitDiagnosisCode: Optional[str] = Field(default=None)
     ClmProcedureCode_1: Optional[str] = Field(default=None)
     DOD: Optional[str] = Field(default=None)
+
+    @model_validator(mode="after")
+    def validate_amounts_and_currency(self) -> "SingleClaimRequest":
+        cur = (self.Currency or "USD").strip().upper()
+        reimb = self.InscClaimAmtReimbursed
+        ded = self.DeductibleAmtPaid or 0.0
+
+        if reimb is None or not math.isfinite(reimb):
+            raise ValueError("Reimbursement amount must be a finite numerical value.")
+        if reimb < 0.0:
+            raise ValueError("Reimbursement amount cannot be negative.")
+
+        if ded is None or not math.isfinite(ded):
+            raise ValueError("Deductible amount must be a finite numerical value.")
+        if ded < 0.0:
+            raise ValueError("Deductible amount cannot be negative.")
+
+        if cur == "INR":
+            max_reimb = 41750000.0  # 500000 USD * 83.50 INR/USD
+            max_ded = 2087500.0     # 25000 USD * 83.50 INR/USD
+            if reimb > max_reimb:
+                raise ValueError(
+                    f"Reimbursement amount exceeds maximum plausible clinical limit "
+                    f"(₹4,17,50,000.00, equivalent to $500000.00 USD clinical cap)."
+                )
+            if ded > max_ded:
+                raise ValueError(
+                    f"Deductible amount exceeds maximum plausible limit "
+                    f"(₹20,87,500.00, equivalent to $25000.00 USD cap)."
+                )
+        else:
+            if reimb > 500000.0:
+                raise ValueError("Reimbursement amount exceeds maximum plausible clinical limit ($500000.00).")
+            if ded > 25000.0:
+                raise ValueError("Deductible amount exceeds maximum plausible Medicare deductible ($25000.00).")
+
+        self.InscClaimAmtReimbursed = round(reimb, 2)
+        self.DeductibleAmtPaid = round(ded, 2)
+        return self
+
+    @field_validator("ClaimStartDt", "ClaimEndDt", "AdmissionDt", "DischargeDt")
+    @classmethod
+    def validate_date_format(cls, v: Optional[str]) -> Optional[str]:
+        if not v:
+            return None
+        v_clean = str(v).strip()
+        try:
+            pd.to_datetime(v_clean)
+        except Exception:
+            raise ValueError(f"Invalid date format '{v}'. Expected valid ISO date (YYYY-MM-DD).")
+        return v_clean
+
+    @model_validator(mode="after")
+    def validate_dates_consistency(self) -> "SingleClaimRequest":
+        if self.ClaimStartDt and self.ClaimEndDt:
+            dt_start = pd.to_datetime(self.ClaimStartDt)
+            dt_end = pd.to_datetime(self.ClaimEndDt)
+            if dt_end < dt_start:
+                raise ValueError(f"ClaimEndDt ({self.ClaimEndDt}) cannot be earlier than ClaimStartDt ({self.ClaimStartDt}).")
+            if (dt_end - dt_start).days > 365:
+                raise ValueError("Claim duration between ClaimStartDt and ClaimEndDt cannot exceed 365 days.")
+
+        if self.AdmissionDt and self.DischargeDt:
+            dt_adm = pd.to_datetime(self.AdmissionDt)
+            dt_dis = pd.to_datetime(self.DischargeDt)
+            if dt_dis < dt_adm:
+                raise ValueError(f"DischargeDt ({self.DischargeDt}) cannot be earlier than AdmissionDt ({self.AdmissionDt}).")
+            if (dt_dis - dt_adm).days > 365:
+                raise ValueError("Inpatient length of stay cannot exceed 365 days.")
+        return self
 
 
 class SingleClaimResponse(BaseModel):
@@ -228,6 +308,34 @@ class SingleClaimResponse(BaseModel):
     explanation: Dict[str, Any]
     investigation_recommendation: str
     disclaimer: str
+    currency: Optional[str] = "INR"
+    original_reimbursement: Optional[float] = None
+    original_deductible: Optional[float] = None
+    reimbursement_inr: Optional[float] = None
+    reimbursement_usd: Optional[float] = None
+    exchange_rate_applied: Optional[float] = None
+    exchange_rate_source: Optional[str] = None
+    investigator_report: Optional[Dict[str, Any]] = None
+    base_model_probabilities: Optional[Dict[str, float]] = None
+
+
+class InvestigatorDecisionRequest(BaseModel):
+    claim_id: str
+    provider_id: str
+    decision_status: str  # "Pending Review", "Investigation Required", "Under Investigation", "No Issue Identified", "Suspected Irregularity – Escalation Required", "Closed"
+    notes: Optional[str] = ""
+    decision_date: Optional[str] = None
+
+
+class InvestigatorDecisionResponse(BaseModel):
+    decision_id: int
+    claim_id: str
+    provider_id: str
+    decision_status: str
+    notes: str
+    decision_date: str
+    investigator_email: str
+    audit_logged: bool
 
 
 # ══════════════════════════════════════════════════════════════════════════════

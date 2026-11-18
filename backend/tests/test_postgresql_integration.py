@@ -9,6 +9,8 @@ Explicitly tests PostgreSQL 18:
   - Reports actual database engine used for each test.
 """
 
+import os
+from urllib.parse import urlparse
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -22,7 +24,24 @@ from backend.app.db.models import (
     CaseNote, AuditLog, RevokedToken
 )
 
-PG_TEST_URL = "postgresql://postgres:anok1234@localhost:5432/healthguard"
+PG_USER = os.getenv("DB_USER", "postgres")
+PG_PASSWORD = os.getenv("DB_PASSWORD", "anok1234")
+PG_HOST = os.getenv("DB_HOST", "localhost")
+PG_PORT = os.getenv("DB_PORT", "5432")
+PG_TEST_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/healthguard_test"
+)
+
+# STRICT SAFETY ASSERTION: Validates exact parsed database name
+from urllib.parse import urlparse
+_parsed = urlparse(PG_TEST_URL)
+_dbname = _parsed.path.lstrip("/").split("?")[0]
+if _dbname != "healthguard_test":
+    raise RuntimeError(
+        f"CRITICAL SAFETY VIOLATION: Test connection targeted database '{_dbname}'. "
+        "Automated tests must ONLY connect to 'healthguard_test'. Silent fallbacks strictly forbidden!"
+    )
 
 @pytest.fixture(scope="module")
 def pg_engine():

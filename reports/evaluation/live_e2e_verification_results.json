@@ -1,0 +1,92 @@
+{
+  "1": {
+    "num": 1,
+    "name": "Frontend loads successfully",
+    "status": "PASS",
+    "endpoint": "http://localhost:3000/",
+    "http_status": 200,
+    "details": "Vite React single-page app HTML bundle loaded successfully with root mounting point and script entrypoint.",
+    "persistence": null
+  },
+  "2": {
+    "num": 2,
+    "name": "User login works through frontend",
+    "status": "FAIL",
+    "endpoint": "/api/auth/login",
+    "http_status": 0,
+    "details": "HTTP Error 401: Unauthorized",
+    "persistence": null
+  },
+  "3": {
+    "num": 3,
+    "name": "Dashboard overview loads actual PostgreSQL data",
+    "status": "FAIL",
+    "endpoint": "/api/overview",
+    "http_status": 0,
+    "details": "HTTP Error 404: Not Found",
+    "persistence": null
+  },
+  "4": {
+    "num": 4,
+    "name": "Providers page loads provider records",
+    "status": "FAIL",
+    "endpoint": "/api/providers",
+    "http_status": 0,
+    "details": "HTTP Error 401: Unauthorized",
+    "persistence": null
+  },
+  "5": {
+    "num": 5,
+    "name": "Claims page loads claim records",
+    "status": "FAIL",
+    "endpoint": "/api/claims",
+    "http_status": 0,
+    "details": "HTTP Error 401: Unauthorized",
+    "persistence": null
+  },
+  "6": {
+    "num": 6,
+    "name": "Single Claim Analyzer returns valid prediction",
+    "status": "FAIL",
+    "endpoint": "/api/analyzer/single",
+    "http_status": 0,
+    "details": "HTTP Error 401: Unauthorized",
+    "persistence": null
+  },
+  "7": {
+    "num": 7,
+    "name": "Claim analysis, provider risk score & explanation persisted in PostgreSQL",
+    "status": "FAIL",
+    "endpoint": "PostgreSQL Direct Verification",
+    "http_status": 0,
+    "details": "HTTP Error 401: Unauthorized",
+    "persistence": null
+  },
+  "8": {
+    "num": 8,
+    "name": "CSV upload processes valid & invalid files correctly",
+    "status": "FAIL",
+    "endpoint": "/api/analyzer/csv",
+    "http_status": 0,
+    "details": "HTTP Error 401: Unauthorized",
+    "persistence": null
+  },
+  "9": {
+    "num": 9,
+    "name": "CSV upload history displays saved uploads",
+    "status": "FAIL",
+    "endpoint": "/api/analyzer/csv",
+    "http_status": 0,
+    "details": "No valid_upload_id from Test 8",
+    "persistence": null
+  },
+  "10": {
+    "num": 10,
+    "name": "Check backend and console logs for errors",
+    "status": "PASS",
+    "endpoint": "Uvicorn & Application Logs",
+    "http_status": 200,
+    "details": "Inspected last 100 log lines from backend task-5900. Zero 500 errors, zero unhandled tracebacks, zero crash events detected.",
+    "persistence": null
+  }
+}

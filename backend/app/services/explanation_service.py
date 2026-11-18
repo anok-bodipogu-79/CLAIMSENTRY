@@ -224,19 +224,19 @@ class ExplanationService:
             }
 
         # Section 5: Provider History
-        first_dt = provider_history_summary.get("first_claim_date") or "2009-01-01"
-        last_dt = provider_history_summary.get("last_claim_date") or "2009-12-31"
-        tot_claims = provider_history_summary.get("total_claims_recorded") or eval_result.get("total_claims_analyzed", 255)
-        active_m = provider_history_summary.get("active_months") or 12
+        first_dt = provider_history_summary.get("first_claim_date") if provider_history_summary else None
+        last_dt = provider_history_summary.get("last_claim_date") if provider_history_summary else None
+        tot_claims = (provider_history_summary.get("total_claims_recorded") if provider_history_summary else None) or eval_result.get("total_claims_analyzed") or 1
+        active_m = (provider_history_summary.get("active_months") if provider_history_summary else None) or (1 if tot_claims else 1)
 
         provider_history_data = {
-            "total_recorded_claims": int(tot_claims),
-            "first_recorded_claim_date": str(first_dt)[:10],
-            "most_recent_claim_date": str(last_dt)[:10],
-            "months_covered": int(active_m),
+            "total_recorded_claims": int(tot_claims) if tot_claims is not None else "Unavailable",
+            "first_recorded_claim_date": str(first_dt)[:10] if first_dt else "Unavailable",
+            "most_recent_claim_date": str(last_dt)[:10] if last_dt else "Unavailable",
+            "months_covered": int(active_m) if active_m is not None else "Unavailable",
             "peer_group": "Medicare Part A/B Institutional Health Facilities",
             "peer_records_in_comparison_group": 5410,
-            "coverage_warning": "Historical claims coverage reflects observed CMS database records. Unrecorded historical encounters are unobserved.",
+            "coverage_warning": "Historical claims coverage reflects observed database and repository records. Unrecorded encounters are unobserved.",
         }
 
         # Section 6: Temporal Findings

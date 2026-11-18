@@ -317,6 +317,22 @@ class SingleClaimResponse(BaseModel):
     exchange_rate_source: Optional[str] = None
     investigator_report: Optional[Dict[str, Any]] = None
     base_model_probabilities: Optional[Dict[str, float]] = None
+    monthly_trends: Optional[Dict[str, Any]] = None
+
+
+class ProviderMonthlyPoint(BaseModel):
+    month: str
+    reimbursement: float
+    claim_count: int
+
+
+class ProviderMonthlyTrendsResponse(BaseModel):
+    provider_id: str
+    period: str
+    currency: str
+    total_reimbursement: float
+    total_claims: int
+    months: List[ProviderMonthlyPoint]
 
 
 class InvestigatorDecisionRequest(BaseModel):

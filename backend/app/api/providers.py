@@ -18,7 +18,9 @@ from backend.app.db.schemas import (
     ProviderExplanationResponse,
     PaginatedClaimsResponse,
     ClaimListItem,
+    ProviderMonthlyTrendsResponse,
 )
+from backend.app.services.claim_analysis_pipeline import claim_analysis_pipeline
 
 router = APIRouter(prefix="/providers", tags=["Providers"])
 
@@ -263,4 +265,24 @@ def get_provider_explanation(
         negative_contributors=neg_contribs,
         temporal_explanation=None,
         disclaimer=settings.REGULATORY_DISCLAIMER,
+    )
+
+
+@router.get("/{provider_id}/monthly-trends", response_model=ProviderMonthlyTrendsResponse)
+def get_provider_monthly_trends(
+    provider_id: str,
+    period: str = Query("12_months", description="Time period: 6_months, 12_months, all"),
+    currency: str = Query("INR", description="Reimbursement currency: INR or USD"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Retrieve authentic monthly reimbursement and claim count aggregations for a provider.
+    Used for investigator visual analysis (Reimbursement Trend & Claim Activity charts).
+    """
+    return claim_analysis_pipeline.get_provider_monthly_trends(
+        provider_id=provider_id,
+        db=db,
+        currency=currency,
+        period=period,
     )

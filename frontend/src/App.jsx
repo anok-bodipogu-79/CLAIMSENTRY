@@ -32,8 +32,21 @@ import {
   AlertCircle,
   BarChart3,
   ShieldCheck,
-  UserCheck
+  UserCheck,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from 'recharts';
 
 const MANDATORY_DISCLAIMER = "This is a risk assessment to guide investigation. It is not proof of fraud.";
 
@@ -74,6 +87,23 @@ export const formatINR = (val, showSymbol = true) => {
     maximumFractionDigits: 2,
   });
   return showSymbol ? `₹${formatted}` : formatted;
+};
+
+export const formatUSD = (val, showSymbol = true) => {
+  if (val === null || val === undefined || isNaN(val)) return showSymbol ? '$0.00' : '0.00';
+  const num = Number(val);
+  const formatted = num.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return showSymbol ? `$${formatted}` : formatted;
+};
+
+export const formatCurrency = (val, currency = 'INR', showSymbol = true) => {
+  if (String(currency).toUpperCase() === 'USD') {
+    return formatUSD(val, showSymbol);
+  }
+  return formatINR(val, showSymbol);
 };
 
 // Helper for risk tier badge styling with strict fallback to 'Unavailable' (never defaulting to LOW)
@@ -185,6 +215,7 @@ export default function App() {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState(null);
+  const [showDetailedEvidence, setShowDetailedEvidence] = useState(true);
   const latestAnalysisReqIdRef = useRef(0);
 
   // Batch CSV State
@@ -1815,9 +1846,17 @@ export default function App() {
                       </form>
                     </div>
 
-                    {/* Analysis Output Result */}
-                    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
-                      <h3 className="text-sm font-bold text-slate-900">Risk Evaluation Findings</h3>
+                    {/* Analysis Output Result - Investigator Decision Report */}
+                    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-6">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <div>
+                          <h3 className="text-base font-bold text-slate-900 tracking-tight">Investigator Decision Report</h3>
+                          <p className="text-xs text-slate-500">Evidence-based risk scoring and explainable factor attribution</p>
+                        </div>
+                        <span className="text-[10px] font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md font-semibold border border-slate-200" data-testid="model-version-badge">
+                          Model: {analysisResult?.model_version || 'v2'}
+                        </span>
+                      </div>
 
                       {analysisError && (
                         <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
@@ -1832,91 +1871,320 @@ export default function App() {
                       )}
 
                       {analysisResult && (
-                        <div className="space-y-4">
-                          {/* Score Gauge & Model Version Card */}
-                          <div className="p-5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-                            <div>
-                              <div className="flex items-center space-x-2 mb-1">
-                                <span className="text-xs font-semibold text-slate-500">Provider Fraud Risk Score</span>
-                                <span className="text-[10px] font-mono bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-semibold" data-testid="model-version-badge">
-                                  Model: {analysisResult.model_version || 'v2'}
+                        <div className="space-y-6">
+                          {/* ── SECTION 1: RISK OVERVIEW ── */}
+                          <div className="p-5 bg-slate-50/80 rounded-xl border border-slate-200 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                                  01 — Risk Overview
                                 </span>
+                                <div className="flex items-baseline space-x-3">
+                                  <span className="text-4xl font-extrabold font-mono text-slate-900 tracking-tight" data-testid="risk-score-value">
+                                    {formatProbability(analysisResult.provider_risk_score)}
+                                  </span>
+                                  <div data-testid="risk-tier-badge">
+                                    {getTierBadge(analysisResult.provider_risk_tier)}
+                                  </div>
+                                </div>
+                                {analysisResult.investigation_recommendation && (
+                                  <div className="mt-2 text-xs font-medium text-slate-600 flex items-center space-x-1.5" data-testid="investigation-recommendation">
+                                    <span className="font-semibold text-slate-800">Priority:</span>
+                                    <span>{analysisResult.investigation_recommendation}</span>
+                                  </div>
+                                )}
                               </div>
-                              <span className="text-4xl font-extrabold font-mono text-slate-900" data-testid="risk-score-value">
-                                {formatProbability(analysisResult.provider_risk_score)}
-                              </span>
+
+                              {/* Key Claim & Provider Details */}
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs bg-white p-3 rounded-lg border border-slate-200">
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block font-semibold uppercase">Claim ID</span>
+                                  <span className="font-mono font-bold text-slate-800 truncate block max-w-[120px]" title={analysisResult.claim_id || singleClaimForm.claim_id}>
+                                    {analysisResult.claim_id || singleClaimForm.claim_id}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block font-semibold uppercase">Provider</span>
+                                  <span className="font-mono font-bold text-slate-800 block">
+                                    {analysisResult.provider_id || singleClaimForm.provider_id}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block font-semibold uppercase">Claim Type</span>
+                                  <span className="font-semibold text-slate-800 block">
+                                    {singleClaimForm.claim_type || 'Outpatient'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block font-semibold uppercase">Reimbursement</span>
+                                  <span className="font-mono font-bold text-slate-800 block">
+                                    {formatCurrency(
+                                      analysisResult.original_reimbursement !== undefined ? analysisResult.original_reimbursement : singleClaimForm.reimbursement_amount,
+                                      analysisResult.currency || 'INR'
+                                    )}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block font-semibold uppercase">Historical Claims</span>
+                                  <span className="font-mono font-bold text-slate-800 block">
+                                    {analysisResult.investigator_report?.provider_overview?.total_recorded_claims ||
+                                      analysisResult.explanation?.provider_history_summary?.total_claims_recorded ||
+                                      analysisResult.monthly_trends?.total_claims ||
+                                      '1'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block font-semibold uppercase">Evaluation Date</span>
+                                  <span className="font-medium text-slate-700 block">
+                                    {new Date().toISOString().slice(0, 10)}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
-                            <div data-testid="risk-tier-badge">
-                              {getTierBadge(analysisResult.provider_risk_tier)}
+
+                            {(!Number.isFinite(analysisResult.provider_risk_score) || !analysisResult.provider_risk_tier) && (
+                              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800" data-testid="incomplete-error">
+                                Warning: The risk assessment response is incomplete or invalid. Please re-run the evaluation.
+                              </div>
+                            )}
+                          </div>
+
+                          {/* ── SECTION 2: WHY THIS SCORE? (Explainable AI) ── */}
+                          <div className="p-5 bg-white rounded-xl border border-slate-200 space-y-3">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                                02 — Why This Score?
+                              </span>
+                              <h4 className="text-sm font-bold text-slate-900">Key Statistical Risk Drivers</h4>
+                              <p className="text-xs text-slate-500">
+                                Plain English findings translated from feature attributions and peer comparative benchmarks.
+                              </p>
+                            </div>
+
+                            <div className="space-y-2.5">
+                              {analysisResult.investigator_report?.main_reasons && analysisResult.investigator_report.main_reasons.length > 0 ? (
+                                analysisResult.investigator_report.main_reasons.map((r, idx) => (
+                                  <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center space-x-2">
+                                        <span className="w-4 h-4 rounded-full bg-red-100 text-red-700 font-bold flex items-center justify-center text-[10px]">
+                                          {idx + 1}
+                                        </span>
+                                        <span className="font-bold text-slate-900">{r.title}</span>
+                                      </div>
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">
+                                        Elevates Risk
+                                      </span>
+                                    </div>
+                                    <p className="text-slate-700 pl-6 leading-relaxed">{r.finding}</p>
+                                    {(r.observed_value_display || r.comparison_display) && (
+                                      <div className="pl-6 pt-0.5 flex flex-wrap gap-3 text-[11px] text-slate-500 font-mono">
+                                        {r.observed_value_display && <span>Observed: <strong className="text-slate-800">{r.observed_value_display}</strong></span>}
+                                        {r.comparison_display && <span>Benchmark: <strong className="text-slate-700">{r.comparison_display}</strong></span>}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              ) : (
+                                (analysisResult.explanation?.top_risk_factors || analysisResult.top_risk_factors || []).slice(0, 4).map((f, idx) => {
+                                  const humanName = f.display_name || (f.feature ? f.feature.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : `Risk Factor ${idx + 1}`);
+                                  return (
+                                    <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-bold text-slate-900">{humanName}</span>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${f.direction === 'INCREASES_FRAUD_RISK' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                          {f.direction === 'INCREASES_FRAUD_RISK' ? 'Elevates Risk' : 'Lowers Risk'}
+                                        </span>
+                                      </div>
+                                      <p className="text-slate-600">
+                                        Observed value: {typeof f.actual_value === 'number' ? f.actual_value.toLocaleString() : f.actual_value} (Peer benchmark: {f.benchmark_summary || 'Available in detailed evidence'})
+                                      </p>
+                                    </div>
+                                  );
+                                })
+                              )}
+
+                              {analysisResult.investigator_report?.factors_reducing_concern && analysisResult.investigator_report.factors_reducing_concern.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                                  <span className="text-[11px] font-bold text-slate-600 block uppercase tracking-wider">
+                                    Factors Moderating Concern:
+                                  </span>
+                                  {analysisResult.investigator_report.factors_reducing_concern.map((r, idx) => (
+                                    <div key={idx} className="p-2.5 bg-emerald-50/70 border border-emerald-100 rounded-lg text-xs space-y-0.5">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-bold text-emerald-900">{r.title}</span>
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                          Lowers Risk
+                                        </span>
+                                      </div>
+                                      <p className="text-emerald-800">{r.finding}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          {/* Incomplete or Missing Field Alert */}
-                          {(!Number.isFinite(analysisResult.provider_risk_score) || !analysisResult.provider_risk_tier) && (
-                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800" data-testid="incomplete-error">
-                              Warning: The risk assessment response is incomplete or invalid. Please re-run the evaluation.
+                          {/* ── SECTION 3: VISUAL ANALYSIS (Side-by-Side Charts) ── */}
+                          <div className="p-5 bg-white rounded-xl border border-slate-200 space-y-3">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                                03 — Visual Analysis
+                              </span>
+                              <h4 className="text-sm font-bold text-slate-900">Historical Provider Billing Dynamics</h4>
+                              <p className="text-xs text-slate-500">
+                                Reimbursement trends and claim activity aggregated directly from authentic database encounter records.
+                              </p>
                             </div>
-                          )}
 
-                          {/* Investigation Recommendation */}
-                          {analysisResult.investigation_recommendation && (
-                            <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-1" data-testid="investigation-recommendation">
-                              <span className="font-bold text-blue-900 block">Investigation Recommendation</span>
-                              <p className="text-blue-800 leading-relaxed">{analysisResult.investigation_recommendation}</p>
-                            </div>
-                          )}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-1">
+                              {/* Chart A: Reimbursement Trend */}
+                              <div className="p-3.5 bg-slate-50/70 rounded-xl border border-slate-200 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                                    <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>Reimbursement Trend</span>
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 font-medium">Monthly ({analysisResult.currency || 'INR'})</span>
+                                </div>
+                                {analysisResult.monthly_trends?.months && analysisResult.monthly_trends.months.length > 0 ? (
+                                  <div className="h-48 w-full pt-1">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <LineChart data={analysisResult.monthly_trends.months}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                                        <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={{ stroke: '#cbd5e1' }} />
+                                        <YAxis
+                                          tick={{ fontSize: 10, fill: '#64748b' }}
+                                          axisLine={{ stroke: '#cbd5e1' }}
+                                          tickFormatter={(v) => v >= 10000000 ? `${(v/10000000).toFixed(1)}Cr` : (v >= 100000 ? `${(v/100000).toFixed(1)}L` : (v >= 1000 ? `${(v/1000).toFixed(0)}k` : v))}
+                                        />
+                                        <Tooltip
+                                          formatter={(val) => [formatCurrency(val, analysisResult.currency || 'INR'), 'Reimbursement']}
+                                          contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '11px' }}
+                                        />
+                                        <Line type="monotone" dataKey="reimbursement" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 3, fill: '#6366f1' }} activeDot={{ r: 5 }} />
+                                      </LineChart>
+                                    </ResponsiveContainer>
+                                  </div>
+                                ) : (
+                                  <div className="h-40 flex items-center justify-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                                    No multi-month historical billing records found for this provider.
+                                  </div>
+                                )}
+                              </div>
 
-                          {/* Base Model Probabilities */}
-                          {analysisResult.base_model_probabilities && (
-                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                              <span className="text-xs font-bold text-slate-700 block">Ensemble Base Model Contributions</span>
-                              <div className="grid grid-cols-3 gap-2 text-xs">
-                                <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                                  <span className="text-slate-500 font-medium block">XGBoost</span>
-                                  <span className="font-mono text-slate-900 font-bold">
-                                    {formatProbability(analysisResult.base_model_probabilities.xgboost)}
+                              {/* Chart B: Claim Activity */}
+                              <div className="p-3.5 bg-slate-50/70 rounded-xl border border-slate-200 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                                    <BarChart3 className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>Claim Activity</span>
                                   </span>
+                                  <span className="text-[10px] text-slate-500 font-medium">Claims Count</span>
                                 </div>
-                                <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                                  <span className="text-slate-500 font-medium block">ANN</span>
-                                  <span className="font-mono text-slate-900 font-bold">
-                                    {formatProbability(analysisResult.base_model_probabilities.ann)}
-                                  </span>
-                                </div>
-                                <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                                  <span className="text-slate-500 font-medium block">Bi-LSTM</span>
-                                  <span className="font-mono text-slate-900 font-bold">
-                                    {formatProbability(analysisResult.base_model_probabilities.bilstm)}
-                                  </span>
-                                </div>
+                                {analysisResult.monthly_trends?.months && analysisResult.monthly_trends.months.length > 0 ? (
+                                  <div className="h-48 w-full pt-1">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <BarChart data={analysisResult.monthly_trends.months}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                                        <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={{ stroke: '#cbd5e1' }} />
+                                        <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={{ stroke: '#cbd5e1' }} />
+                                        <Tooltip
+                                          formatter={(val) => [val, 'Claims']}
+                                          contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '11px' }}
+                                        />
+                                        <Bar dataKey="claim_count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                      </BarChart>
+                                    </ResponsiveContainer>
+                                  </div>
+                                ) : (
+                                  <div className="h-40 flex items-center justify-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                                    No historical claims recorded.
+                                  </div>
+                                )}
                               </div>
                             </div>
-                          )}
+                          </div>
 
-                          {/* SHAP Explanation & Top Risk Factors */}
-                          {(analysisResult.explanation_title || analysisResult.explanation || analysisResult.shap_explanation) && (
-                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-3" data-testid="shap-explanation-card">
-                              <span className="font-bold text-slate-800 block text-sm">
-                                {analysisResult.explanation_title || analysisResult.explanation?.title || analysisResult.shap_explanation?.title || 'Risk Factor Attribution (SHAP)'}
+                          {/* ── SECTION 4: CLAIM ANOMALY FINDINGS ── */}
+                          <div className="p-5 bg-white rounded-xl border border-slate-200 space-y-2.5" data-testid="claim-anomaly-card">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                              04 — Claim Anomaly Findings
+                            </span>
+                            {analysisResult.has_anomalies || (analysisResult.anomaly_flags && analysisResult.anomaly_flags.length > 0) ? (
+                              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                                <div className="flex items-center space-x-2">
+                                  <AlertTriangle className="w-4 h-4 text-amber-700" />
+                                  <span className="text-xs font-bold text-amber-900">
+                                    ⚠ Claim-Level Operational Anomalies Flagged ({analysisResult.anomaly_flags?.length || 1})
+                                  </span>
+                                </div>
+                                <div className="space-y-1.5 pt-0.5">
+                                  {(analysisResult.claim_anomaly_findings || []).map((finding, idx) => (
+                                    (finding.rules_triggered || []).map((r, rIdx) => (
+                                      <div key={`${idx}-${rIdx}`} className="p-2.5 bg-white rounded-lg border border-amber-100 text-xs space-y-0.5">
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                                          {r.rule_name}
+                                        </span>
+                                        <p className="text-slate-700 pt-0.5">{r.explanation}</p>
+                                      </div>
+                                    ))
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start space-x-2.5 text-xs">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                <div>
+                                  <span className="font-bold text-emerald-900 block">✓ No Anomalies Detected</span>
+                                  <p className="text-emerald-800 pt-0.5">
+                                    The submitted claim did not trigger any configured claim anomaly checks. All clinical, procedural, and billing parameters are within expected peer baseline thresholds.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* ── EXPANDABLE DETAILED EVIDENCE (For ML Auditing) ── */}
+                          <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
+                            <button
+                              type="button"
+                              onClick={() => setShowDetailedEvidence(!showDetailedEvidence)}
+                              className="w-full p-3.5 flex items-center justify-between text-left text-xs font-bold text-slate-700 hover:bg-slate-100/70 transition"
+                            >
+                              <span className="flex items-center space-x-2">
+                                <Sliders className="w-3.5 h-3.5 text-slate-500" />
+                                <span>{showDetailedEvidence ? '▲ Hide Detailed Evidence & ML Audit Data' : '▼ View Detailed Evidence & Technical Audit Data'}</span>
                               </span>
-                              <p className="text-slate-600 leading-relaxed whitespace-pre-line">
-                                {analysisResult.explanation?.text || (typeof analysisResult.explanation === 'string' ? analysisResult.explanation : '') || analysisResult.shap_explanation?.text}
-                              </p>
+                              <span className="text-[11px] text-slate-400 font-normal">
+                                SHAP table, Bi-LSTM occlusion, base models, metadata
+                              </span>
+                            </button>
 
-                              {/* Structured Factor Breakdown Table */}
-                              {((analysisResult.explanation?.top_risk_factors && analysisResult.explanation.top_risk_factors.length > 0) ||
-                                (analysisResult.top_risk_factors && analysisResult.top_risk_factors.length > 0)) && (
-                                <div className="mt-2 space-y-2">
-                                  <span className="font-semibold text-slate-700 block text-xs">Key Statistical Risk Drivers:</span>
+                            {showDetailedEvidence && (
+                              <div className="p-5 border-t border-slate-200 bg-white space-y-5">
+                                {/* SHAP Explanation Card & Technical Table */}
+                                <div data-testid="shap-explanation-card" className="space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-slate-800">
+                                      {analysisResult.explanation_title || 'Risk Factor Attribution (SHAP Margin Space)'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-mono">shap.TreeExplainer (XGBoost)</span>
+                                  </div>
+                                  <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">
+                                    {analysisResult.explanation?.text || (typeof analysisResult.explanation === 'string' ? analysisResult.explanation : '')}
+                                  </p>
+
+                                  {/* Technical Feature Contributions Table */}
                                   <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-xs bg-white rounded-lg border border-slate-200 divide-y divide-slate-100">
+                                    <table className="w-full text-left text-xs bg-slate-50 rounded-lg border border-slate-200 divide-y divide-slate-100">
                                       <thead className="bg-slate-100 text-slate-600 text-[11px]">
                                         <tr>
-                                          <th className="py-1.5 px-3 font-semibold">Feature & Scope</th>
-                                          <th className="py-1.5 px-3 font-semibold">Observed Value</th>
-                                          <th className="py-1.5 px-3 font-semibold">SHAP Impact</th>
-                                          <th className="py-1.5 px-3 font-semibold">Effect</th>
-                                          <th className="py-1.5 px-3 font-semibold">Benchmark</th>
+                                          <th className="py-2 px-3 font-semibold">Feature & Scope</th>
+                                          <th className="py-2 px-3 font-semibold">Observed Value</th>
+                                          <th className="py-2 px-3 font-semibold">SHAP Impact</th>
+                                          <th className="py-2 px-3 font-semibold">Effect</th>
+                                          <th className="py-2 px-3 font-semibold">Peer Benchmark</th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -1926,7 +2194,7 @@ export default function App() {
                                           const actVal = f.actual_value !== undefined ? f.actual_value : (f.feature_value !== undefined ? f.feature_value : 'N/A');
                                           const scopeBadge = f.scope_badge || (f.feature?.includes('to_peer_median') ? 'Peer Benchmark' : 'Provider History');
                                           return (
-                                            <tr key={idx} className="hover:bg-slate-50">
+                                            <tr key={idx} className="hover:bg-white">
                                               <td className="py-1.5 px-3">
                                                 <span className="font-mono font-medium text-slate-900 block">{f.display_name || f.feature}</span>
                                                 {f.display_name && f.display_name !== f.feature && (
@@ -1945,113 +2213,73 @@ export default function App() {
                                                   {isElevating ? 'Elevates Risk' : 'Lowers Risk'}
                                                 </span>
                                               </td>
-                                              <td className="py-1.5 px-3 text-[11px] text-slate-500">{f.benchmark_summary || (f.peer_percentile ? `${f.peer_percentile}th percentile` : '—')}</td>
+                                              <td className="py-1.5 px-3 text-[11px] text-slate-500">{f.benchmark_summary || '—'}</td>
                                             </tr>
                                           );
                                         })}
                                       </tbody>
                                     </table>
                                   </div>
-                                  <div className="p-2.5 bg-blue-50/70 border border-blue-100 rounded-lg text-[11px] text-blue-900 leading-relaxed">
-                                    <span className="font-bold">Feature Provenance Notice:</span> Provider History features reflect cumulative aggregates across all historical claims on file for this healthcare provider (plus the current claim), whereas claim anomaly findings reflect this specific submitted claim.
-                                  </div>
                                 </div>
-                              )}
-                            </div>
-                          )}
 
-                          {/* Temporal Sequence Explanation (Bi-LSTM) */}
-                          {analysisResult.explanation?.temporal_explanation && (
-                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5" data-testid="temporal-explanation-card">
-                              <span className="font-bold text-slate-800 block text-sm">Temporal Sequence Dynamics (Bi-LSTM)</span>
-                              {analysisResult.explanation.temporal_explanation.trajectory_summary && (
-                                <p className="text-slate-600 leading-relaxed font-medium">
-                                  {analysisResult.explanation.temporal_explanation.trajectory_summary}
-                                </p>
-                              )}
-                              {analysisResult.explanation.temporal_explanation.monthly_temporal_impacts && (
-                                <div className="mt-2 space-y-1.5">
-                                  <span className="text-[11px] font-semibold text-slate-500 block">12-Month Observation Sequence:</span>
-                                  <div className="grid grid-cols-6 sm:grid-cols-12 gap-1 text-center font-mono text-[10px]">
-                                    {analysisResult.explanation.temporal_explanation.monthly_temporal_impacts.map((m, idx) => {
-                                      const isPad = !m.is_valid_observation || m.observation_type === 'PADDING';
-                                      const isZeroInWindow = m.observation_type === 'ZERO_CLAIMS_IN_WINDOW';
-                                      const imp = typeof m.impact === 'number' ? m.impact : 0;
-                                      let bgCol = 'bg-slate-100 text-slate-400';
-                                      if (!isPad) {
-                                        if (imp > 0.005) bgCol = 'bg-red-100 text-red-700 font-bold border border-red-200';
-                                        else if (imp < -0.005) bgCol = 'bg-emerald-100 text-emerald-700 font-bold border border-emerald-200';
-                                        else if (isZeroInWindow) bgCol = 'bg-amber-50 text-amber-700 border border-amber-200';
-                                        else bgCol = 'bg-white text-slate-700 border border-slate-200';
-                                      }
-                                      return (
-                                        <div key={idx} className={`p-1.5 rounded ${bgCol}`} title={isPad ? 'Padding (Unobserved Month)' : (isZeroInWindow ? 'Zero Claims in Observed Window' : `Impact: ${imp >= 0 ? '+' : ''}${imp.toFixed(4)}`)}>
-                                          <div className="text-[9px] text-slate-400 font-sans">M{m.month_index || idx + 1}</div>
-                                          <div>{isPad ? 'PAD' : (isZeroInWindow ? '0 CLM' : (imp >= 0 ? `+${imp.toFixed(2)}` : imp.toFixed(2)))}</div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Claim Anomaly Findings */}
-                          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2" data-testid="claim-anomaly-card">
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-slate-800 text-sm">Claim Anomaly Findings</span>
-                              {analysisResult.has_anomalies || (analysisResult.anomaly_flags && analysisResult.anomaly_flags.length > 0) ? (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">
-                                  {analysisResult.anomaly_flags?.length || 1} Anomalies Detected
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">
-                                  No Anomalies Detected
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Detailed Rule Triggers */}
-                            {analysisResult.has_anomalies && analysisResult.claim_anomaly_findings && analysisResult.claim_anomaly_findings.length > 0 ? (
-                              <div className="space-y-1.5 pt-1">
-                                {analysisResult.claim_anomaly_findings.map((finding, idx) => {
-                                  const rules = finding.rules_triggered || [];
-                                  if (rules.length > 0) {
-                                    return rules.map((r, rIdx) => (
-                                      <div key={`${idx}-${rIdx}`} className="p-2.5 bg-white rounded-lg border border-red-100 text-xs space-y-0.5">
-                                        <div className="flex items-center space-x-2">
-                                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">
-                                            {r.rule_name}
-                                          </span>
-                                          {r.observed_value !== undefined && (
-                                            <span className="text-[11px] text-slate-500">Observed: {String(r.observed_value)}</span>
-                                          )}
-                                        </div>
-                                        <p className="text-slate-700 pt-0.5">{r.explanation}</p>
+                                {/* Temporal Sequence Dynamics (Bi-LSTM) */}
+                                {analysisResult.explanation?.temporal_explanation && (
+                                  <div className="space-y-2 pt-2 border-t border-slate-100" data-testid="temporal-explanation-card">
+                                    <span className="text-xs font-bold text-slate-800 block">Bi-LSTM Temporal Occlusion Sequence</span>
+                                    <p className="text-xs text-slate-600">
+                                      {analysisResult.explanation.temporal_explanation.trajectory_summary}
+                                    </p>
+                                    {analysisResult.explanation.temporal_explanation.monthly_temporal_impacts && (
+                                      <div className="grid grid-cols-6 sm:grid-cols-12 gap-1 text-center font-mono text-[10px] pt-1">
+                                        {analysisResult.explanation.temporal_explanation.monthly_temporal_impacts.map((m, idx) => {
+                                          const isPad = !m.is_valid_observation || m.observation_type === 'PADDING';
+                                          const imp = typeof m.impact === 'number' ? m.impact : 0;
+                                          let bg = isPad ? 'bg-slate-100 text-slate-400' : (imp > 0 ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200');
+                                          return (
+                                            <div key={idx} className={`p-1 rounded ${bg}`}>
+                                              <div className="text-[9px] text-slate-400">M{m.month_index || idx + 1}</div>
+                                              <div>{isPad ? 'PAD' : (imp >= 0 ? `+${imp.toFixed(2)}` : imp.toFixed(2))}</div>
+                                            </div>
+                                          );
+                                        })}
                                       </div>
-                                    ));
-                                  }
-                                  return (
-                                    <div key={idx} className="p-2.5 bg-white rounded-lg border border-slate-200 text-xs flex items-start space-x-2">
-                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">
-                                        {finding.rule_name || `Rule ${idx + 1}`}
-                                      </span>
-                                      <span className="text-slate-700">{finding.description || JSON.stringify(finding)}</span>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Base Models Probabilities */}
+                                {analysisResult.base_model_probabilities && (
+                                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                                    <span className="text-xs font-bold text-slate-700 block">Ensemble Base Model Contributions</span>
+                                    <div className="grid grid-cols-3 gap-2 text-xs">
+                                      <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                                        <span className="text-slate-500 block">XGBoost</span>
+                                        <span className="font-mono text-slate-900 font-bold">{formatProbability(analysisResult.base_model_probabilities.xgboost)}</span>
+                                      </div>
+                                      <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                                        <span className="text-slate-500 block">ANN</span>
+                                        <span className="font-mono text-slate-900 font-bold">{formatProbability(analysisResult.base_model_probabilities.ann)}</span>
+                                      </div>
+                                      <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                                        <span className="text-slate-500 block">Bi-LSTM</span>
+                                        <span className="font-mono text-slate-900 font-bold">{formatProbability(analysisResult.base_model_probabilities.bilstm)}</span>
+                                      </div>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="p-3 bg-white rounded-lg border border-slate-200 text-slate-600 text-xs">
-                                All clinical, procedural, and billing parameters for this claim are within expected peer baseline thresholds. No operational anomaly flags triggered.
+                                  </div>
+                                )}
+
+                                {/* Dataset Source Disclaimer */}
+                                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-500 space-y-1">
+                                  <span className="font-bold text-slate-700 block">Benchmark Source & Validation Metadata:</span>
+                                  <p>Peer benchmarks originate from the US CMS Medicare comparison dataset. Currency conversion normalizes inputs for the trained ensemble; model was not independently trained on native Indian insurer claims.</p>
+                                </div>
                               </div>
                             )}
                           </div>
 
-                          {/* Mandatory Regulatory Ethical Disclaimer */}
-                          <div className="p-3.5 bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-600 space-y-1" data-testid="regulatory-disclaimer">
-                            <span className="font-semibold text-slate-700 block">Regulatory & Ethical Disclaimer:</span>
+                          {/* Mandatory Statutory Disclaimer */}
+                          <div className="p-3.5 bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-600" data-testid="regulatory-disclaimer">
+                            <span className="font-semibold text-slate-700 block mb-0.5">Regulatory & Ethical Disclaimer:</span>
                             <p className="italic leading-relaxed">
                               {analysisResult.disclaimer || 'This is a risk assessment to guide investigation. It is not proof of fraud.'}
                             </p>

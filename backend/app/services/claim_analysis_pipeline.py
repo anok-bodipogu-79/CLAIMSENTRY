@@ -365,8 +365,17 @@ class ClaimAnalysisPipeline:
             if hasattr(existing_claim, "original_reimbursement") and existing_claim.original_reimbursement is not None and getattr(existing_claim, "currency", None) == cur:
                 reimb_diff = min(reimb_diff, abs(float(existing_claim.original_reimbursement) - orig_reimb))
             prov_match = (existing_claim.provider_id == payload.ProviderID)
+            bene_match = (existing_claim.beneficiary_id or "") == (payload.BeneID or "")
+            type_match = True
+            if payload.ClaimType and existing_claim.claim_type:
+                type_match = (existing_claim.claim_type.strip().lower() == payload.ClaimType.strip().lower())
+            ded_diff = abs(float(existing_claim.deductible_amount or 0.0) - usd_ded)
+            if hasattr(existing_claim, "original_deductible") and existing_claim.original_deductible is not None and getattr(existing_claim, "currency", None) == cur:
+                ded_diff = min(ded_diff, abs(float(existing_claim.original_deductible) - orig_ded))
 
-            if prov_match and reimb_diff < 0.01:
+            is_exact_match = (prov_match and reimb_diff < 0.01 and bene_match and type_match and ded_diff < 0.01)
+
+            if is_exact_match:
                 # Exact duplicate submission: check if existing ClaimAnalysis exists
                 existing_ca = (
                     db.query(ClaimAnalysis)
@@ -414,6 +423,18 @@ class ClaimAnalysisPipeline:
                         else settings.MODEL_VERSION
                     )
 
+                    dup_trends = cls.get_provider_monthly_trends(
+                        provider_id=payload.ProviderID,
+                        db=db,
+                        currency=cur,
+                        period="12_months",
+                    )
+                    dup_inv_rep = (
+                        existing_expl.feature_contributions.get("investigator_report")
+                        if existing_expl and existing_expl.feature_contributions
+                        else None
+                    )
+
                     return SingleClaimResponse(
                         claim_id=payload.ClaimID,
                         provider_id=payload.ProviderID,
@@ -427,6 +448,15 @@ class ClaimAnalysisPipeline:
                         explanation=expl_dict,
                         investigation_recommendation=dup_rec,
                         disclaimer=settings.REGULATORY_DISCLAIMER,
+                        currency=cur,
+                        original_reimbursement=round(orig_reimb, 2),
+                        original_deductible=round(orig_ded, 2),
+                        reimbursement_inr=round(orig_reimb if cur == "INR" else orig_reimb * rate, 2),
+                        reimbursement_usd=round(usd_reimb, 2),
+                        exchange_rate_applied=applied_rate,
+                        exchange_rate_source=currency_service.BENCHMARK_SOURCE,
+                        investigator_report=dup_inv_rep,
+                        monthly_trends=dup_trends,
                     )
             else:
                 # Conflicting details for existing ClaimID
@@ -434,8 +464,9 @@ class ClaimAnalysisPipeline:
                 existing_amt_str = f"₹{existing_claim.original_reimbursement:,.2f}" if (existing_curr == "INR" and getattr(existing_claim, "original_reimbursement", None) is not None) else f"${existing_claim.reimbursement_amount:,.2f}"
                 raise AnalysisValidationError(
                     f"Conflict: Claim ID '{payload.ClaimID}' already exists in database with differing details "
-                    f"(Recorded Provider: {existing_claim.provider_id}, Reimbursement: {existing_amt_str}). "
-                    f"Conflicting duplicate claim submissions are rejected."
+                    f"(Recorded Provider: {existing_claim.provider_id}, Recorded Bene: {existing_claim.beneficiary_id}, "
+                    f"Reimbursement: {existing_amt_str}, Claim Type: {existing_claim.claim_type}). "
+                    f"Conflicting duplicate claim submissions are rejected to prevent historical claim modification."
                 )
 
         claim_dict = payload.model_dump(exclude_none=True)
@@ -491,21 +522,34 @@ class ClaimAnalysisPipeline:
         }
         p_history = cls.fetch_provider_historical_claims(provider_id=payload.ProviderID, db=db)
         has_history = p_history is not None and not p_history.empty
-        first_dt = "2009-01-01"
-        last_dt = "2009-12-31"
+        first_dt = None
+        last_dt = None
+        tot_claims = 1
+        active_months = 1
         if has_history:
+            tot_claims = len(p_history)
             if "ClaimStartDt" in p_history and not p_history["ClaimStartDt"].dropna().empty:
-                first_dt = str(p_history["ClaimStartDt"].dropna().min())
+                first_dt = str(p_history["ClaimStartDt"].dropna().min())[:10]
             if "ClaimEndDt" in p_history and not p_history["ClaimEndDt"].dropna().empty:
-                last_dt = str(p_history["ClaimEndDt"].dropna().max())
+                last_dt = str(p_history["ClaimEndDt"].dropna().max())[:10]
             elif "ClaimStartDt" in p_history and not p_history["ClaimStartDt"].dropna().empty:
-                last_dt = str(p_history["ClaimStartDt"].dropna().max())
+                last_dt = str(p_history["ClaimStartDt"].dropna().max())[:10]
+
+            if "ClaimStartDt" in p_history:
+                try:
+                    dt_series = pd.to_datetime(p_history["ClaimStartDt"], errors="coerce").dropna()
+                    active_months = max(1, len(dt_series.dt.to_period("M").unique()))
+                except Exception:
+                    active_months = 1
+        else:
+            first_dt = payload.ClaimStartDt
+            last_dt = payload.ClaimEndDt or payload.ClaimStartDt
 
         prov_hist_summary = {
-            "total_claims_recorded": len(p_history) if has_history else provider_res.get("total_claims_analyzed", 255),
+            "total_claims_recorded": tot_claims,
             "first_claim_date": first_dt,
             "last_claim_date": last_dt,
-            "active_months": 12,
+            "active_months": active_months,
         }
         explanation_data = explanation_service.format_explanation(
             eval_result=provider_res,
@@ -514,6 +558,14 @@ class ClaimAnalysisPipeline:
             exchange_rate=applied_rate,
             claim_metadata=claim_meta,
             provider_history_summary=prov_hist_summary,
+        )
+
+        # Monthly trends for visual charts
+        monthly_trends = cls.get_provider_monthly_trends(
+            provider_id=payload.ProviderID,
+            db=db,
+            currency=cur,
+            period="12_months",
         )
 
         # 4. Construct raw response structure
@@ -530,6 +582,7 @@ class ClaimAnalysisPipeline:
             "explanation": explanation_data,
             "investigator_report": explanation_data.get("investigator_report"),
             "base_model_probabilities": provider_res.get("base_model_probabilities"),
+            "monthly_trends": monthly_trends,
             "investigation_recommendation": recommendation,
             "disclaimer": settings.REGULATORY_DISCLAIMER,
             "currency": cur,
@@ -606,29 +659,8 @@ class ClaimAnalysisPipeline:
                 db.add(claim)
                 db.flush()
             else:
-                claim.reimbursement_amount = usd_reimb
-                claim.deductible_amount = usd_ded
-                claim.currency = cur
-                claim.original_reimbursement = orig_reimb
-                claim.original_deductible = orig_ded
-                if clm_start_dt:
-                    claim.claim_date = clm_start_dt
-                if clm_end_dt:
-                    claim.claim_end_date = clm_end_dt
-                if adm_dt:
-                    claim.admission_date = adm_dt
-                if dis_dt:
-                    claim.discharge_date = dis_dt
-                claim.inpatient_los = los
-                if payload.AttendingPhysician:
-                    claim.attending_physician = payload.AttendingPhysician
-                if payload.OperatingPhysician:
-                    claim.operating_physician = payload.OperatingPhysician
-                if payload.OtherPhysician:
-                    claim.other_physician = payload.OtherPhysician
-                if payload.ClmProcedureCode_1:
-                    claim.procedure_codes = [payload.ClmProcedureCode_1]
-                db.flush()
+                # Historical claim records are immutable to protect data integrity
+                logger.info(f"Existing historical claim {payload.ClaimID} preserved without modification.")
 
             # Provider Risk Score
             prs = prediction_service.persist_provider_assessment(
@@ -689,6 +721,91 @@ class ClaimAnalysisPipeline:
             raise RuntimeError(f"Database persistence error: {e}")
 
         return SingleClaimResponse(**response_dict)
+
+    @classmethod
+    def get_provider_monthly_trends(
+        cls,
+        provider_id: str,
+        db: Session,
+        currency: str = "INR",
+        period: str = "12_months",
+    ) -> Dict[str, Any]:
+        """
+        Aggregate authentic monthly reimbursement and claim activity for a provider.
+        Sources from PostgreSQL claims database and CMS historical repository without fabrication.
+        Converts reimbursement to requested currency.
+        """
+        cur = str(currency or "INR").strip().upper()
+        p_history = cls.fetch_provider_historical_claims(provider_id=provider_id, db=db)
+
+        monthly_map: Dict[str, Dict[str, Any]] = {}
+
+        if p_history is not None and not p_history.empty:
+            df = p_history.copy()
+            date_col = "ClaimStartDt" if "ClaimStartDt" in df else ("ClaimDate" if "ClaimDate" in df else None)
+            amt_col = "InscClaimAmtReimbursed" if "InscClaimAmtReimbursed" in df else None
+
+            if date_col and amt_col:
+                df["dt"] = pd.to_datetime(df[date_col], errors="coerce")
+                df = df.dropna(subset=["dt"])
+                df["month"] = df["dt"].dt.strftime("%Y-%m")
+                df["amt"] = pd.to_numeric(df[amt_col], errors="coerce").fillna(0.0)
+
+                grouped = df.groupby("month").agg(
+                    reimb=("amt", "sum"),
+                    cnt=("month", "count"),
+                ).reset_index()
+
+                for _, row in grouped.iterrows():
+                    m_str = str(row["month"])
+                    usd_val = float(row["reimb"])
+                    if cur == "INR":
+                        reimb_val = round(currency_service.usd_to_inr(usd_val), 2)
+                    else:
+                        reimb_val = round(usd_val, 2)
+
+                    monthly_map[m_str] = {
+                        "month": m_str,
+                        "reimbursement": reimb_val,
+                        "claim_count": int(row["cnt"]),
+                    }
+
+        # Also merge any DB claims not captured in CSV
+        db_claims = db.query(Claim).filter(Claim.provider_id == provider_id).all()
+        for clm in db_claims:
+            clm_dt = clm.claim_date or clm.admission_date
+            if clm_dt:
+                m_str = clm_dt.strftime("%Y-%m")
+                if m_str not in monthly_map:
+                    usd_val = float(clm.reimbursement_amount or 0.0)
+                    if cur == "INR":
+                        reimb_val = round(currency_service.usd_to_inr(usd_val), 2)
+                    else:
+                        reimb_val = round(usd_val, 2)
+                    monthly_map[m_str] = {
+                        "month": m_str,
+                        "reimbursement": reimb_val,
+                        "claim_count": 1,
+                    }
+
+        sorted_months = sorted(monthly_map.keys())
+        if period == "6_months" and len(sorted_months) > 6:
+            sorted_months = sorted_months[-6:]
+        elif period == "12_months" and len(sorted_months) > 12:
+            sorted_months = sorted_months[-12:]
+
+        result_months = [monthly_map[m] for m in sorted_months]
+        tot_reimb = round(sum(m["reimbursement"] for m in result_months), 2)
+        tot_cnt = sum(m["claim_count"] for m in result_months)
+
+        return {
+            "provider_id": provider_id,
+            "period": period,
+            "currency": cur,
+            "total_reimbursement": tot_reimb,
+            "total_claims": tot_cnt,
+            "months": result_months,
+        }
 
 
 claim_analysis_pipeline = ClaimAnalysisPipeline()

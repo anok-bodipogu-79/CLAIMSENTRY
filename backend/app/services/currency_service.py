@@ -175,6 +175,38 @@ class CurrencyService:
         return res
 
     @classmethod
+    def format_usd(cls, amount: float, symbol: bool = True) -> str:
+        """
+        Format a numeric value using US Numbering System (e.g. $1,250,000.00).
+        """
+        if amount is None:
+            return "$0.00" if symbol else "0.00"
+        try:
+            val = float(amount)
+        except (ValueError, TypeError):
+            return "$0.00" if symbol else "0.00"
+
+        is_negative = val < 0
+        abs_val = abs(val)
+        d_val = Decimal(str(abs_val)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        formatted = f"{d_val:,.2f}"
+        if is_negative:
+            formatted = f"-{formatted}"
+        if symbol:
+            formatted = f"${formatted}"
+        return formatted
+
+    @classmethod
+    def format_currency(cls, amount: float, currency: str = "INR", symbol: bool = True) -> str:
+        """
+        Format amount using standard Indian number grouping for INR, or standard US formatting for USD.
+        """
+        cur = str(currency or "INR").strip().upper()
+        if cur == "USD":
+            return cls.format_usd(amount, symbol=symbol)
+        return cls.format_inr(amount, symbol=symbol)
+
+    @classmethod
     def convert_claim_inputs_to_usd(
         cls,
         claim_dict: Dict[str, Any],
@@ -241,6 +273,8 @@ get_exchange_rate = CurrencyService.get_exchange_rate
 inr_to_usd = CurrencyService.inr_to_usd
 usd_to_inr = CurrencyService.usd_to_inr
 format_inr = CurrencyService.format_inr
+format_usd = CurrencyService.format_usd
+format_currency = CurrencyService.format_currency
 convert_claim_inputs_to_usd = CurrencyService.convert_claim_inputs_to_usd
 validate_exchange_rate = CurrencyService.validate_exchange_rate
 

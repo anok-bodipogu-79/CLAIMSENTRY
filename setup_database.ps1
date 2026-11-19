@@ -11,7 +11,7 @@
 
 param(
     [string]$DbUser = "postgres",
-    [string]$DbPassword = "anok1234",
+    [string]$DbPassword = "postgres",
     [string]$DbHost = "localhost",
     [int]$DbPort = 5432,
     [string]$DbName = "healthcare_fraud_db",

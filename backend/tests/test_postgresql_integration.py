@@ -25,7 +25,7 @@ from backend.app.db.models import (
 )
 
 PG_USER = os.getenv("DB_USER", "postgres")
-PG_PASSWORD = os.getenv("DB_PASSWORD", "anok1234")
+PG_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 PG_HOST = os.getenv("DB_HOST", "localhost")
 PG_PORT = os.getenv("DB_PORT", "5432")
 PG_TEST_URL = os.getenv(

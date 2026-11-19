@@ -52,12 +52,14 @@ class PredictionService:
         claims_input: Any,
         provider_id: Optional[str] = None,
         historical_claims_df: Optional[pd.DataFrame] = None,
+        patient_historical_claims: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Execute the real shared Phase 3 prediction and anomaly pipeline."""
         return self.predictor.predict_claims(
             claims_input=claims_input,
             provider_id=provider_id,
             historical_claims_df=historical_claims_df,
+            patient_historical_claims=patient_historical_claims,
             include_shap=True,
             include_temporal=True,
             include_anomalies=True,

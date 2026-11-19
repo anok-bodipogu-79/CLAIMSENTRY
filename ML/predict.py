@@ -66,6 +66,7 @@ class HealthGuardPredictor:
         self.explainer: Optional[FraudExplainer] = None
         self.peer_reference_table: Dict[str, Any] = {}
         self._provider_history_cache: Dict[str, pd.DataFrame] = {}
+        self._cms_runtime_access_count: int = 0
         self.is_ready: bool = False
         self.verification_error: Optional[str] = None
 
@@ -397,21 +398,96 @@ class HealthGuardPredictor:
             results.append(res)
         return results
 
-    def _load_provider_history(self, provider_id: str) -> pd.DataFrame:
+    def _load_cms_provider_history(self, provider_id: str) -> pd.DataFrame:
         """
-        Retrieve historical claims for a provider from PostgreSQL database and repository datasets.
+        Load historical reference claims from static CMS repository datasets with caching.
+        DEPRECATED for live runtime analysis; reserved exclusively for offline research/training.
+        Live runtime claim analysis MUST use pure PostgreSQL database records.
         """
-        matched_chunks = []
+        self._cms_runtime_access_count += 1
+        pid_norm = str(provider_id or "").strip().upper()
+        if not pid_norm:
+            return pd.DataFrame()
 
-        # 1. Check live PostgreSQL database for previously recorded claims
-        try:
-            from backend.app.db.database import SessionLocal
-            from backend.app.db.models import Claim
-            db = SessionLocal()
+        if pid_norm in self._provider_history_cache:
+            return self._provider_history_cache[pid_norm].copy()
+
+        matched_chunks = []
+        parquet_file = self.proc_dir / "cms_claims_indexed.parquet"
+
+        if parquet_file.exists():
             try:
-                db_claims = db.query(Claim).filter(Claim.provider_id == provider_id).all()
-                if db_claims:
-                    db_rows = []
+                df_pq = pd.read_parquet(parquet_file, filters=[("ProviderID", "==", pid_norm)])
+                if not df_pq.empty:
+                    matched_chunks.append(df_pq)
+            except Exception as e:
+                logger.warning(f"Error reading indexed parquet for provider {pid_norm}: {e}")
+
+        # Fallback to candidate CSV files if parquet missing or returned empty
+        if not matched_chunks:
+            candidate_files = [
+                self.proc_dir / "cleaned_training_claims.csv",
+                self.proc_dir / "kaggle_test_claims.csv",
+            ]
+            for c_file in candidate_files:
+                if not c_file.exists():
+                    continue
+                try:
+                    for chunk in pd.read_csv(c_file, chunksize=50000, low_memory=False):
+                        sub = chunk[chunk["ProviderID"].astype(str).str.upper() == pid_norm]
+                        if len(sub) > 0:
+                            matched_chunks.append(sub)
+                    if len(matched_chunks) > (1 if matched_chunks and "ClaimID" in matched_chunks[0] else 0):
+                        break
+                except Exception:
+                    continue
+
+        if matched_chunks:
+            p_history = pd.concat(matched_chunks, ignore_index=True)
+            if "ClaimID" in p_history.columns:
+                p_history = p_history.drop_duplicates(subset=["ClaimID"], keep="first")
+        else:
+            p_history = pd.DataFrame()
+
+        # Cache reference result in memory
+        self._provider_history_cache[pid_norm] = p_history.copy()
+        return p_history.copy()
+
+    def _load_provider_history(
+        self,
+        provider_id: str,
+        include_db: bool = True,
+        db: Optional[Any] = None,
+        exclude_claim_id: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """
+        Retrieve historical claims for a provider strictly from the PostgreSQL database.
+        Static CMS repository datasets are decoupled from live runtime analysis (CMS Access Count = 0).
+        If provider has 0 prior claims in PostgreSQL, returns empty DataFrame with expected claim columns.
+        If exclude_claim_id is specified, excludes that claim from historical retrieval.
+        """
+        pid_norm = str(provider_id or "").strip().upper()
+        db_rows: List[Dict[str, Any]] = []
+
+        # 1. Query live PostgreSQL database if requested
+        if include_db and pid_norm:
+            should_close = False
+            session = db
+            if session is None:
+                try:
+                    from backend.app.db.database import SessionLocal
+                    session = SessionLocal()
+                    should_close = True
+                except Exception:
+                    session = None
+
+            if session is not None:
+                try:
+                    from backend.app.db.models import Claim
+                    q = session.query(Claim).filter(Claim.provider_id == pid_norm)
+                    if exclude_claim_id:
+                        q = q.filter(Claim.claim_id != str(exclude_claim_id).strip())
+                    db_claims = q.all()
                     for c in db_claims:
                         diag_1 = c.diagnosis_codes[0] if (c.diagnosis_codes and len(c.diagnosis_codes) > 0) else None
                         proc_1 = c.procedure_codes[0] if (c.procedure_codes and len(c.procedure_codes) > 0) else None
@@ -433,39 +509,25 @@ class HealthGuardPredictor:
                             "ClmDiagnosisCode_1": diag_1,
                             "ClmProcedureCode_1": proc_1,
                         })
-                    if db_rows:
-                        matched_chunks.append(pd.DataFrame(db_rows))
-            finally:
-                db.close()
-        except Exception:
-            pass
+                except Exception as e:
+                    logger.warning(f"Error querying PostgreSQL claims for {pid_norm}: {e}")
+                finally:
+                    if should_close and session is not None:
+                        session.close()
 
-        # 2. Check repository datasets
-        candidate_files = [
-            self.proc_dir / "cleaned_training_claims.csv",
-            self.proc_dir / "kaggle_test_claims.csv",
-        ]
-        for c_file in candidate_files:
-            if not c_file.exists():
-                continue
-            try:
-                for chunk in pd.read_csv(c_file, chunksize=50000, low_memory=False):
-                    sub = chunk[chunk["ProviderID"] == provider_id]
-                    if len(sub) > 0:
-                        matched_chunks.append(sub)
-                if len(matched_chunks) > (1 if matched_chunks and "ClaimID" in matched_chunks[0] else 0):
-                    break
-            except Exception:
-                continue
-
-        if matched_chunks:
-            p_history = pd.concat(matched_chunks, ignore_index=True)
-            if "ClaimID" in p_history.columns:
-                p_history = p_history.drop_duplicates(subset=["ClaimID"], keep="first")
+        # Pure PostgreSQL provider history: no CMS repository loading during live claim analysis
+        if db_rows:
+            combined = pd.DataFrame(db_rows)
         else:
-            p_history = pd.DataFrame()
+            combined = pd.DataFrame(columns=[
+                "ClaimID", "ProviderID", "BeneID", "ClaimType",
+                "InscClaimAmtReimbursed", "DeductibleAmtPaid",
+                "ClaimStartDt", "ClaimEndDt", "AdmissionDt", "DischargeDt",
+                "InpatientLOS", "AttendingPhysician", "OperatingPhysician",
+                "OtherPhysician", "ClmDiagnosisCode_1", "ClmProcedureCode_1"
+            ])
 
-        return p_history.copy()
+        return combined
 
     def predict_claims(
         self,
@@ -706,11 +768,12 @@ class HealthGuardPredictor:
 
                     p_eval["temporal_explanation"] = temporal_expl
                     p_eval["provider_history_count"] = history_count
+                    p_eval["has_limited_history"] = bool(history_count == 0)
                     p_eval["new_claims_count"] = len(p_new_claims)
                     p_eval["total_claims_analyzed"] = len(p_combined)
                     if history_count == 0:
                         p_eval["warnings"] = (p_eval.get("warnings") or []) + [
-                            "No prior historical claims found for provider in repository; evaluating based exclusively on new claims snapshot."
+                            "No prior historical claims recorded for provider in HealthGuard AI; evaluating based exclusively on submitted claims snapshot."
                         ]
 
                     provider_results[pid_str] = p_eval
@@ -721,6 +784,7 @@ class HealthGuardPredictor:
                             p_new_claims,
                             provider_reference_data=self.peer_reference_table,
                             historical_claims_df=p_hist_dedup,
+                            patient_historical_claims=kwargs.get("patient_historical_claims"),
                         )
                         for ca in p_claim_anomalies:
                             ca["provider_risk_tier"] = p_eval["risk_tier"]

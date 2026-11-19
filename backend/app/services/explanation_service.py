@@ -31,6 +31,7 @@ class ExplanationService:
         exchange_rate: float = 83.50,
         claim_metadata: Optional[Dict[str, Any]] = None,
         provider_history_summary: Optional[Dict[str, Any]] = None,
+        data_availability: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Format a comprehensive, multi-section explanation report for human investigators."""
         claim_metadata = claim_metadata or {}
@@ -52,25 +53,31 @@ class ExplanationService:
             "medium_high_cutoff": getattr(settings, "DEFAULT_MEDIUM_HIGH_THRESHOLD", 0.70),
         }
 
-        # ── Currency-Aware Formatting for Legacy Text ────────────────────────
+        # ── Currency-Aware Formatting for Feature Values ─────────────────────
         def _format_fval(feat_name: str, val: Any) -> str:
-            if val is None or val == "N/A":
+            if val is None or val == "N/A" or val == "Not available":
                 return "Not available"
-            try:
-                fval = float(val)
-                is_curr = any(term in feat_name for term in ["reimbursement", "deductible", "amt", "cost", "charge"])
-                if is_curr:
-                    if currency == "INR":
-                        return format_inr_currency(fval * exchange_rate)
-                    else:
-                        return format_usd_currency(fval)
-                if any(term in feat_name for term in ["pct", "ratio"]):
-                    return f"{fval:.3f}"
-                if fval.is_integer():
-                    return f"{int(fval):,}"
-                return f"{fval:,.2f}"
-            except Exception:
-                return str(val)
+            return feature_explanation_service.format_value(
+                feature_name=feat_name,
+                value=val,
+                currency=currency,
+                exchange_rate=exchange_rate,
+                is_already_inr=False,
+            )
+
+        def _enrich_factor(f: Dict[str, Any]) -> Dict[str, Any]:
+            f_copy = dict(f)
+            fname = f_copy.get("feature", "Unknown")
+            fval = f_copy.get("actual_value", f_copy.get("feature_value", f_copy.get("value")))
+            f_copy["formatted_value"] = _format_fval(fname, fval)
+            # Decouple static CMS Medicare training percentiles from live investigator comparisons
+            f_copy["peer_median_formatted"] = "Peer benchmark unavailable"
+            f_copy["benchmark_summary"] = "Peer benchmark unavailable"
+            return f_copy
+
+        enriched_top_factors = [_enrich_factor(f) for f in top_factors]
+        enriched_positive_factors = [_enrich_factor(f) for f in positive_factors]
+        enriched_negative_factors = [_enrich_factor(f) for f in negative_factors]
 
         # ── 1. Legacy Natural Language Text Narrative ────────────────────────
         prob_pct = f"{prob * 100:.1f}%"
@@ -88,8 +95,7 @@ class ExplanationService:
                 display = f.get("display_name", fname)
                 scope = f.get("scope_badge", "Provider History")
                 formatted_val = _format_fval(fname, fval)
-                bench_val = f.get("peer_median")
-                bench_str = f" [Peer median: {_format_fval(fname, bench_val)}]" if bench_val is not None else ""
+                bench_str = " [Peer benchmark: Peer benchmark unavailable]"
                 lines.append(f" • {display} ({fname}): observed {formatted_val} (SHAP impact: {sval:+.4f}){bench_str} [{scope}]")
         elif top_factors:
             lines.append("Key statistical risk drivers identified by XGBoost SHAP attribution include:")
@@ -109,8 +115,7 @@ class ExplanationService:
                 display = f.get("display_name", fname)
                 scope = f.get("scope_badge", "Provider History")
                 formatted_val = _format_fval(fname, fval)
-                bench_val = f.get("peer_median")
-                bench_str = f" [Peer median: {_format_fval(fname, bench_val)}]" if bench_val is not None else ""
+                bench_str = " [Peer benchmark: Peer benchmark unavailable]"
                 lines.append(f" • {display} ({fname}): observed {formatted_val} (SHAP impact: {sval:+.4f}){bench_str} [{scope}]")
 
         if claim_anomalies:
@@ -185,6 +190,7 @@ class ExplanationService:
                 exchange_rate=exchange_rate,
                 is_already_inr=False,
                 rank=rank_idx,
+                risk_tier=risk_tier,
             )
             main_reasons.append(finding)
 
@@ -207,6 +213,7 @@ class ExplanationService:
                 exchange_rate=exchange_rate,
                 is_already_inr=False,
                 rank=rank_idx,
+                risk_tier=risk_tier,
             )
             factors_reducing.append(finding)
 
@@ -223,6 +230,27 @@ class ExplanationService:
                 "execution_status": "EXECUTED",
             }
 
+        # Score interpretation Callout (explaining final score in context of drivers)
+        if risk_tier == "LOW":
+            score_interpretation = (
+                f"Why is the final score LOW ({prob_pct}) despite the statistical risk drivers above? "
+                "The multi-modal architecture combines tree-based attribution with deep sequence and neural representations. "
+                "While selected provider historical metrics exceed peer medians, mitigating clinical indicators "
+                "(including baseline-normal length of stay, normal repeat beneficiary frequency, absent claim anomalies, and stable temporal billing) "
+                "prevented the overall ensemble probability from reaching the moderate or high risk thresholds."
+            )
+        elif risk_tier == "HIGH":
+            score_interpretation = (
+                f"The overall provider risk score is HIGH ({prob_pct}) because multiple high-magnitude statistical risk "
+                "drivers compounded across cumulative reimbursement, peer ratios, and billing volume surges without sufficient "
+                "moderating baseline factors."
+            )
+        else:
+            score_interpretation = (
+                f"The provider risk score is MEDIUM ({prob_pct}), indicating elevated billing patterns requiring targeted claim verification, "
+                "though falling below the threshold for comprehensive clinical audit."
+            )
+
         # Section 5: Provider History
         first_dt = provider_history_summary.get("first_claim_date") if provider_history_summary else None
         last_dt = provider_history_summary.get("last_claim_date") if provider_history_summary else None
@@ -231,12 +259,14 @@ class ExplanationService:
 
         provider_history_data = {
             "total_recorded_claims": int(tot_claims) if tot_claims is not None else "Unavailable",
+            "historical_claims_prior": int(tot_claims) if tot_claims is not None else "Unavailable",
+            "total_claims_including_current": (int(tot_claims) + 1) if tot_claims is not None else "Unavailable",
             "first_recorded_claim_date": str(first_dt)[:10] if first_dt else "Unavailable",
             "most_recent_claim_date": str(last_dt)[:10] if last_dt else "Unavailable",
             "months_covered": int(active_m) if active_m is not None else "Unavailable",
             "peer_group": "Medicare Part A/B Institutional Health Facilities",
             "peer_records_in_comparison_group": 5410,
-            "coverage_warning": "Historical claims coverage reflects observed database and repository records. Unrecorded encounters are unobserved.",
+            "coverage_warning": "Historical claims coverage reflects observed database and repository records. Feature calculations combine prior historical claims with the current evaluated claim.",
         }
 
         # Section 6: Temporal Findings
@@ -271,8 +301,10 @@ class ExplanationService:
 
         investigator_report = {
             "summary": report_summary,
+            "data_availability": data_availability,
             "main_reasons": main_reasons,
             "factors_reducing_concern": factors_reducing,
+            "score_interpretation": score_interpretation,
             "model_assessment": model_assessment,
             "provider_history": provider_history_data,
             "temporal_findings": {
@@ -287,12 +319,13 @@ class ExplanationService:
         return {
             "title": self.TITLE,
             "text": explanation_text,
-            "top_risk_factors": top_factors,
-            "positive_contributors": positive_factors,
-            "negative_contributors": negative_factors,
+            "top_risk_factors": enriched_top_factors,
+            "positive_contributors": enriched_positive_factors,
+            "negative_contributors": enriched_negative_factors,
             "temporal_explanation": temporal_expl,
             "disclaimer": settings.REGULATORY_DISCLAIMER,
             "investigator_report": investigator_report,
+            "data_availability": data_availability,
         }
 
     def persist_explanation(

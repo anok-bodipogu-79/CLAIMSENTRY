@@ -3,7 +3,7 @@ HealthGuard AI - Pydantic Request & Response Schemas
 """
 
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional, Dict, Any, Union
 import pandas as pd
@@ -71,6 +71,21 @@ class OverviewSummaryResponse(BaseModel):
     model_version: str
     risk_thresholds: Dict[str, float]
     disclaimer: str
+    total_beneficiaries: Optional[int] = 0
+    high_risk_claims: Optional[int] = 0
+    medium_risk_claims: Optional[int] = 0
+    low_risk_claims: Optional[int] = 0
+    total_reimbursement: Optional[float] = 0.0
+    avg_claim_amount: Optional[float] = 0.0
+    claims_analyzed_today: Optional[int] = 0
+    claims_analyzed_this_month: Optional[int] = 0
+
+
+class OverviewChartsResponse(BaseModel):
+    claims_by_month: List[Dict[str, Any]] = []
+    claims_over_time: List[Dict[str, Any]] = []
+    provider_activity: List[Dict[str, Any]] = []
+    recent_claims: List[Dict[str, Any]] = []
 
 
 class RecentActivityItem(BaseModel):
@@ -78,12 +93,16 @@ class RecentActivityItem(BaseModel):
     activity_type: str  # "PROVIDER_ASSESSMENT", "CSV_UPLOAD"
     description: str
     entity_id: str
+    provider_id: Optional[str] = None
+    risk_score: Optional[float] = None
     risk_tier: Optional[str] = None
     timestamp: datetime
+    created_at: Optional[datetime] = None
 
 
 class RecentActivityResponse(BaseModel):
     activities: List[RecentActivityItem]
+    recent_activities: Optional[List[RecentActivityItem]] = None
 
 
 class RiskDistributionTier(BaseModel):
@@ -172,6 +191,12 @@ class ClaimListItem(BaseModel):
     reimbursement_amount: float
     anomaly_flags: Optional[List[str]] = None
     has_anomalies: bool = False
+    currency: Optional[str] = "USD"
+    original_reimbursement: Optional[float] = None
+    provider_risk_score: Optional[float] = None
+    provider_risk_tier: Optional[str] = None
+    investigation_priority: Optional[str] = None
+    processing_status: Optional[str] = "SUCCESS"
 
     class Config:
         from_attributes = True
@@ -204,9 +229,9 @@ class ClaimAnalysisDetail(BaseModel):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class SingleClaimRequest(BaseModel):
-    ClaimID: str = Field(..., min_length=2, max_length=50, example="CLM_SMP_1001")
-    ProviderID: str = Field(..., min_length=2, max_length=50, example="PRV51003")
-    BeneID: Optional[str] = Field(default=None, max_length=50, example="BENE11001")
+    ClaimID: str = Field(..., min_length=2, max_length=50, example="CLM_1001")
+    ProviderID: str = Field(..., min_length=2, max_length=50, example="PRV_1001")
+    BeneID: Optional[str] = Field(default=None, max_length=50, example="BEN_1001")
     InscClaimAmtReimbursed: float = Field(..., ge=0.0, example=3500.0)
     Currency: Optional[str] = Field(default=None, example="INR", description="Input currency: INR or USD. Defaults to USD for legacy CMS records, or INR from user application.")
     ClaimStartDt: str = Field(..., example="2009-03-01")
@@ -277,6 +302,22 @@ class SingleClaimRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_dates_consistency(self) -> "SingleClaimRequest":
+        today = datetime.now(timezone.utc).date()
+        date_checks = [
+            ("ClaimStartDt", self.ClaimStartDt),
+            ("ClaimEndDt", self.ClaimEndDt),
+            ("AdmissionDt", self.AdmissionDt),
+            ("DischargeDt", self.DischargeDt),
+        ]
+        for field_name, val in date_checks:
+            if val:
+                parsed_dt = pd.to_datetime(val).date()
+                if parsed_dt > today:
+                    raise ValueError(
+                        f"{field_name} ({val}) cannot be in the future. "
+                        f"Service dates must be on or before current date ({today.isoformat()})."
+                    )
+
         if self.ClaimStartDt and self.ClaimEndDt:
             dt_start = pd.to_datetime(self.ClaimStartDt)
             dt_end = pd.to_datetime(self.ClaimEndDt)
@@ -304,6 +345,7 @@ class SingleClaimResponse(BaseModel):
     claim_anomaly_findings: List[Dict[str, Any]]
     anomaly_flags: List[str]
     has_anomalies: bool
+    anomaly_score: Optional[float] = None
     explanation_title: str
     explanation: Dict[str, Any]
     investigation_recommendation: str
@@ -318,6 +360,9 @@ class SingleClaimResponse(BaseModel):
     investigator_report: Optional[Dict[str, Any]] = None
     base_model_probabilities: Optional[Dict[str, float]] = None
     monthly_trends: Optional[Dict[str, Any]] = None
+    data_availability: Optional[Dict[str, Any]] = None
+    provider_history: Optional[Dict[str, Any]] = None
+    beneficiary_history: Optional[Dict[str, Any]] = None
 
 
 class ProviderMonthlyPoint(BaseModel):
@@ -333,6 +378,8 @@ class ProviderMonthlyTrendsResponse(BaseModel):
     total_reimbursement: float
     total_claims: int
     months: List[ProviderMonthlyPoint]
+    has_historical_records: Optional[bool] = True
+    message: Optional[str] = None
 
 
 class InvestigatorDecisionRequest(BaseModel):
@@ -375,10 +422,37 @@ class CSVUploadDetail(BaseModel):
     total_rows: int
     successful_rows: int
     rejected_rows: int
+    processed_rows: int = 0
+    progress_pct: float = 0.0
     reconciliation_verified: bool
     created_at: datetime
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+
+
+class CSVPreviewRow(BaseModel):
+    row_number: int
+    claim_id: Optional[str] = None
+    provider_id: Optional[str] = None
+    beneficiary_id: Optional[str] = None
+    claim_type: Optional[str] = None
+    reimbursement: Optional[float] = None
+    currency: Optional[str] = None
+    claim_start_date: Optional[str] = None
+    status: str  # "VALID", "INVALID", "DUPLICATE"
+    issues: List[str] = []
+
+
+class CSVPreviewResponse(BaseModel):
+    filename: str
+    total_rows: int
+    valid_rows_count: int
+    invalid_rows_count: int
+    duplicate_rows_count: int
+    detected_columns: List[str]
+    missing_required_columns: List[str]
+    preview_rows: List[CSVPreviewRow]
+    warnings: List[str] = []
 
 
 class CSVUploadRowResponse(BaseModel):

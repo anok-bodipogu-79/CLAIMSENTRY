@@ -62,6 +62,21 @@ backups/
 backend/backups_phase2/
 frontend/backups_phase2/
 
-# Large dataset files exceeding GitHub 100MB file limit
+# Database files & backups
+*.db
+*.sqlite
+*.sqlite3
+data/backup_*/
+*_backup.json
+
+# Large dataset files & preprocessed parquet caches
 data/processed/cleaned_training_claims.csv
 data/raw/Train_Outpatientdata-1542865627584.csv
+data/processed/*.parquet
+*.parquet
+
+# Generated audit reports & documentation (essential README.md is preserved)
+Final_Autonomous_Claim_Analyzer_Validation_Report.md
+Phase5_Master_Completion_Report.md
+Production_Cleanup_and_Realtime_Transformation_Report.md
+reports/HEALTHGUARD_AI_PHASE_2_2_IMPLEMENTATION_REPORT.md

@@ -18,6 +18,7 @@ from backend.app.db.schemas import (
 from backend.app.services.claim_analysis_pipeline import (
     claim_analysis_pipeline,
     AnalysisValidationError,
+    AnalysisConflictError,
 )
 
 router = APIRouter(prefix="/analyzer", tags=["Claim Analyzer"])
@@ -44,6 +45,11 @@ def analyze_single_claim(
     except AnalysisValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+    except AnalysisConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
             detail=str(e),
         )
     except Exception as e:

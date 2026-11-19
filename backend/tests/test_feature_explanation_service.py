@@ -160,3 +160,47 @@ def test_record_investigator_decision_endpoint():
         assert data["audit_logged"] is True
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_peer_benchmark_unavailable_when_zero_or_missing():
+    """Verify that peer median of 0 or missing is never formatted as ₹0.00 and outputs 'Benchmark unavailable'."""
+    # Currency feature with peer_median = 0.0 -> Must be 'Benchmark unavailable'
+    finding_zero = FeatureExplanationService.generate_plain_english_finding(
+        feature_name="ip_total_reimbursement",
+        observed_value=50000.0,
+        shap_value=0.03,
+        peer_median=0.0,
+        currency="INR",
+        exchange_rate=83.50,
+        rank=2,
+    )
+    assert "Peer benchmark unavailable" in finding_zero["peer_reference_formatted"] or finding_zero["peer_reference_formatted"] == "Benchmark unavailable"
+    assert "Peer benchmark unavailable" in finding_zero["comparison_display"] or finding_zero["comparison_display"] == "Benchmark unavailable"
+    assert "₹0.00" not in finding_zero["comparison_display"]
+    assert "peer reference benchmark unavailable" in finding_zero["explanation"]
+
+    # Missing peer median (None) -> Must be 'Benchmark unavailable' or 'Peer benchmark unavailable'
+    finding_none = FeatureExplanationService.generate_plain_english_finding(
+        feature_name="total_reimbursement",
+        observed_value=25000.0,
+        shap_value=0.10,
+        peer_median=None,
+        currency="INR",
+        rank=1,
+    )
+    assert "Peer benchmark unavailable" in finding_none["peer_reference_formatted"] or finding_none["peer_reference_formatted"] == "Benchmark unavailable"
+    assert "Peer benchmark unavailable" in finding_none["comparison_display"] or finding_none["comparison_display"] == "Benchmark unavailable"
+
+
+def test_low_risk_tier_context_explanation():
+    """Verify that when risk_tier is LOW, positive SHAP drivers explain why the score remains LOW."""
+    finding_low = FeatureExplanationService.generate_plain_english_finding(
+        feature_name="total_reimbursement",
+        observed_value=20000.0,
+        shap_value=0.25,
+        peer_median=5000.0,
+        currency="INR",
+        rank=1,
+        risk_tier="LOW",
+    )
+    assert "consensus across the ensemble kept the overall provider risk score in the LOW risk tier" in finding_low["explanation"]

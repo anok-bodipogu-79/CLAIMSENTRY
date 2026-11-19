@@ -31,7 +31,7 @@ describe('HealthGuard AI Frontend Integration Tests', () => {
     mockAxios = axios.create();
   });
 
-  it('renders sign-in form with statutory disclaimer when unauthenticated', () => {
+  it('renders clean sign-in form without disclaimer banner or JWT badge when unauthenticated', () => {
     render(<App />);
     expect(screen.getByText('HealthGuard AI')).toBeInTheDocument();
     expect(screen.getByText('Claims Fraud Investigation Portal')).toBeInTheDocument();
@@ -39,10 +39,11 @@ describe('HealthGuard AI Frontend Integration Tests', () => {
     expect(screen.getByPlaceholderText('••••••••••••')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Authenticate Session/i })).toBeInTheDocument();
 
-    // Check mandatory statutory disclaimer
+    // Verify statutory disclaimer and Secure JWT badge are removed from login UI
     expect(
-      screen.getByText(/This is a risk assessment to guide investigation. It is not proof of fraud./i)
-    ).toBeInTheDocument();
+      screen.queryByText(/This is a risk assessment to guide investigation. It is not proof of fraud./i)
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Secure JWT/i)).not.toBeInTheDocument();
   });
 
   it('toggles between Sign In and Investigator Registration form', () => {
@@ -124,10 +125,9 @@ describe('HealthGuard AI Frontend Integration Tests', () => {
       expect(screen.getByText('investigator')).toBeInTheDocument();
     });
 
-    // Verify statutory disclaimer banner in authenticated view
-    expect(
-      screen.getByText(/This is a risk assessment to guide investigation. It is not proof of fraud./i)
-    ).toBeInTheDocument();
+    // Verify horizontal disclaimer/status banner is completely removed from authenticated view
+    expect(screen.queryByTestId('header-disclaimer')).not.toBeInTheDocument();
+    expect(screen.queryByText(/PostgreSQL 18 \| Ensemble v2/i)).not.toBeInTheDocument();
 
     // Verify exactly 5 navigation tabs
     expect(screen.getByRole('button', { name: /^Overview$/i })).toBeInTheDocument();
@@ -253,7 +253,11 @@ describe('HealthGuard AI Frontend Integration Tests', () => {
     expect(fillSampleBtn).toBeInTheDocument();
 
     fireEvent.click(fillSampleBtn);
-    expect(screen.getByText(/Synthetic Test Data Loaded/i)).toBeInTheDocument();
+    // User requirement: remove synthetic test data notification entirely from production interface
+    expect(screen.queryByText(/Synthetic Test Data Loaded/i)).not.toBeInTheDocument();
+    // Verify inputs were populated with valid sample values
+    const claimIdInput = document.getElementById('f-cid');
+    expect(claimIdInput.value).toMatch(/^CLM_/);
   });
 
   it('proves that successive clicks produce different valid sample claims with unique IDs and coherent attributes', async () => {
@@ -564,15 +568,19 @@ describe('HealthGuard AI Frontend Integration Tests', () => {
         expect(screen.getByTestId('risk-tier-badge')).toHaveTextContent('HIGH RISK');
         expect(screen.getByTestId('model-version-badge')).toHaveTextContent('Model: v2');
         expect(screen.getByTestId('investigation-recommendation')).toHaveTextContent('HIGH PRIORITY: Full clinical audit recommended.');
-        expect(screen.getByTestId('shap-explanation-card')).toBeInTheDocument();
-        expect(screen.getByText('mean_inpatient_reimbursement')).toBeInTheDocument();
-        expect(screen.getByText('34,500')).toBeInTheDocument();
-        expect(screen.getByText('+0.3125')).toBeInTheDocument();
-        expect(screen.getByTestId('temporal-explanation-card')).toBeInTheDocument();
-        expect(screen.getByText(/Month 10 had the highest temporal impact/i)).toBeInTheDocument();
-        expect(screen.getByTestId('claim-anomaly-card')).toHaveTextContent('No Anomalies Detected');
+        expect(screen.getAllByText(/mean_inpatient_reimbursement/i).length).toBeGreaterThan(0);
+        expect(screen.getByText(/34,500/)).toBeInTheDocument();
+        expect(screen.getByText('+0.31 SHAP')).toBeInTheDocument();
         expect(screen.getByTestId('regulatory-disclaimer')).toBeInTheDocument();
       });
+
+      // Verify removed sections are strictly absent from the DOM
+      expect(screen.queryByTestId('shap-explanation-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('temporal-explanation-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('claim-anomaly-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('data-availability-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('provider-history-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('beneficiary-history-card')).not.toBeInTheDocument();
     });
 
     it('clears stale results when starting a new claim evaluation', async () => {
@@ -731,6 +739,208 @@ describe('HealthGuard AI Frontend Integration Tests', () => {
       expect(capturedPayload.ClmProcedureCode_1).toBe('3893');
       expect(capturedPayload.OperatingPhysician).toBe('PHY40101');
       expect(capturedPayload.OtherPhysician).toBe('PHY50201');
+    });
+
+    it('Phase C: exposes Diagnosis Code 2 and Admission Diagnosis Code inputs in form payload', async () => {
+      localStorage.setItem('healthguard_token', 'mock_token');
+      mockAxios.get.mockImplementation((url) => {
+        if (url.includes('/users/me')) {
+          return Promise.resolve({
+            data: { id: 1, name: 'Investigator Test', email: 'investigator@healthguard.ai', role: 'investigator' },
+          });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      let capturedPayload = null;
+      mockAxios.post.mockImplementation((url, payload) => {
+        if (url.includes('/analyzer/single')) {
+          capturedPayload = payload;
+          return Promise.resolve({
+            data: {
+              claim_id: payload.ClaimID,
+              provider_id: payload.ProviderID,
+              provider_risk_score: 0.15,
+              provider_risk_tier: 'LOW',
+              model_version: 'v2',
+              has_anomalies: false,
+              anomaly_flags: [],
+              claim_anomaly_findings: [],
+              explanation_title: 'Low Risk',
+              explanation: {},
+              disclaimer: 'Statutory disclaimer.',
+            },
+          });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      render(<App />);
+      await waitFor(() => expect(screen.getByRole('button', { name: /^Claim Analyzer$/i })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /^Claim Analyzer$/i }));
+
+      // Verify Diagnosis Code 2 and Admit Diagnosis Code inputs exist
+      const diag2Input = screen.getByText('Diagnosis Code 2').parentElement.querySelector('input');
+      const admitDiagInput = screen.getByText('Admit Diagnosis Code').parentElement.querySelector('input');
+      expect(diag2Input).toBeInTheDocument();
+      expect(admitDiagInput).toBeInTheDocument();
+
+      fireEvent.change(diag2Input, { target: { value: '25000' } });
+      fireEvent.change(admitDiagInput, { target: { value: '4280' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /Run Fraud Risk Assessment/i }));
+
+      await waitFor(() => {
+        expect(capturedPayload).not.toBeNull();
+      });
+
+      expect(capturedPayload.ClmDiagnosisCode_2).toBe('25000');
+      expect(capturedPayload.ClmAdmitDiagnosisCode).toBe('4280');
+    });
+
+    it('preserves Monthly Reimbursement and Claim Activity charts while removing unneeded audit sections', async () => {
+      localStorage.setItem('healthguard_token', 'mock_token');
+      mockAxios.get.mockImplementation((url) => {
+        if (url.includes('/users/me')) {
+          return Promise.resolve({
+            data: { id: 1, name: 'Investigator Test', email: 'investigator@healthguard.ai', role: 'investigator' },
+          });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      mockAxios.post.mockImplementation((url, payload) => {
+        if (url.includes('/analyzer/single')) {
+          return Promise.resolve({
+            data: {
+              claim_id: payload.ClaimID,
+              provider_id: payload.ProviderID,
+              provider_risk_score: 0.85,
+              provider_risk_tier: 'HIGH',
+              model_version: 'v2',
+              reimbursement_inr: 125000,
+              currency: 'INR',
+              monthly_trends: {
+                months: [
+                  { month: 'Jan', reimbursement: 45000, claim_count: 5 },
+                  { month: 'Feb', reimbursement: 80000, claim_count: 8 }
+                ]
+              },
+              explanation_title: 'High Risk Encounter',
+              explanation: {},
+              disclaimer: 'Statutory disclaimer.',
+            },
+          });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      render(<App />);
+      await waitFor(() => expect(screen.getByRole('button', { name: /^Claim Analyzer$/i })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /^Claim Analyzer$/i }));
+
+      // Run analysis
+      fireEvent.click(screen.getByRole('button', { name: /Run Fraud Risk Assessment/i }));
+
+      // Verify Monthly Reimbursement Trend and Monthly Claim Activity charts are rendered
+      await waitFor(() => {
+        expect(screen.getByText('Monthly Reimbursement Trend')).toBeInTheDocument();
+        expect(screen.getByText('Monthly Claim Activity')).toBeInTheDocument();
+      });
+
+      // Confirm the 5 requested removed sections are strictly absent
+      expect(screen.queryByTestId('investigator-decision-section')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('data-availability-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('provider-history-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('beneficiary-history-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('claim-anomaly-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('shap-explanation-card')).not.toBeInTheDocument();
+    });
+
+    it('verifies Overview recent assessments mapping and Claim Analyzer simplified investigator UI headings', async () => {
+      localStorage.setItem('healthguard_token', 'mock_jwt_token');
+
+      mockAxios.get.mockImplementation((url) => {
+        if (url === '/api/auth/me') {
+          return Promise.resolve({
+            data: { id: 1, name: 'Investigator Scully', email: 'scully@healthguard.ai', role: 'investigator' },
+          });
+        }
+        if (url === '/api/overview/summary') {
+          return Promise.resolve({
+            data: { total_providers: 31, total_claims: 28, high_risk_providers: 3, claims_requiring_investigation: 5, model_version: 'v2' },
+          });
+        }
+        if (url.startsWith('/api/overview/recent-activity')) {
+          return Promise.resolve({
+            data: {
+              activities: [
+                {
+                  id: 364,
+                  activity_type: 'PROVIDER_ASSESSMENT',
+                  provider_id: 'PRV_59081',
+                  entity_id: 'PRV_59081',
+                  risk_score: 0.0699,
+                  risk_tier: 'LOW',
+                  timestamp: '2026-11-20T00:14:20.101659+05:30',
+                  created_at: '2026-11-20T00:14:20.101659+05:30',
+                },
+              ],
+            },
+          });
+        }
+        return Promise.resolve({ data: { distribution: [], claims_by_month: [] } });
+      });
+
+      mockAxios.post.mockImplementation((url) => {
+        if (url === '/api/analyzer/single') {
+          return Promise.resolve({
+            data: {
+              claim_id: 'CLM_INIT_1001',
+              provider_id: 'PRV_10001',
+              provider_risk_score: 0.026,
+              provider_risk_tier: 'LOW',
+              original_reimbursement: 350000.0,
+              currency: 'INR',
+              model_version: 'v2',
+              investigation_recommendation: 'Standard automated settlement workflow.',
+              explanation: {
+                base_value: 0.18,
+                top_risk_factors: [
+                  { feature: 'total_reimbursement', display_name: 'Provider Cumulative Reimbursement', shap_value: -0.09, actual_value: 350000.0 },
+                ],
+              },
+              claim_anomaly_findings: [],
+            },
+          });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      render(<App />);
+
+      // 1. Verify Overview recent assessments table displays provider assessment
+      await waitFor(() => {
+        expect(screen.getByText('PRV_59081')).toBeInTheDocument();
+        expect(screen.getByText('7.0%')).toBeInTheDocument();
+      });
+
+      // 2. Navigate to Claim Analyzer
+      fireEvent.click(screen.getByRole('button', { name: /^Claim Analyzer$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Run Fraud Risk Assessment/i }));
+
+      // 3. Verify Simplified Headings & Financial Exposure
+      await waitFor(() => {
+        expect(screen.getByText('Risk Assessment Summary')).toBeInTheDocument();
+        expect(screen.getByText('Claim Amount Under Review')).toBeInTheDocument();
+        expect(screen.getByText('Why This Risk Score?')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Copy/i })).toBeInTheDocument();
+      });
+
+      // 4. Verify Technical Model Details are removed from visible report
+      expect(screen.queryByText(/99\.4% F1/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/TreeSHAP Exact Decomposition/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Sum\(φᵢ\)/i)).not.toBeInTheDocument();
     });
   });
 });

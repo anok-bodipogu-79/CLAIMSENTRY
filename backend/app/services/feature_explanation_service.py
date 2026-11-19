@@ -63,18 +63,18 @@ def format_usd_currency(amount: float) -> str:
 FEATURE_CATALOG: Dict[str, Dict[str, Any]] = {
     # ── Group 1: Financial and reimbursement ──
     "total_reimbursement": {
-        "display_name": "Provider's Total Reimbursement",
+        "display_name": "Provider Historical Cumulative Reimbursement",
         "category": "Financial and reimbursement",
         "description": "Cumulative insurance reimbursement billed across all recorded inpatient and outpatient claims.",
         "data_source": "CMS Claim Billing Records",
         "unit": "INR",
         "is_currency": True,
-        "scope": "Provider History",
+        "scope": "Provider History (Cumulative)",
         "peer_benchmark_applicable": True,
-        "template": "Provider cumulative reimbursement across all recorded claims is {obs_str}, compared with a peer reference median of {bench_str}."
+        "template": "Provider cumulative reimbursement across all recorded historical encounters is {obs_str}, compared with a peer reference median of {bench_str}."
     },
     "avg_reimbursement": {
-        "display_name": "Average Reimbursement per Claim",
+        "display_name": "Provider Average Reimbursement per Claim",
         "category": "Financial and reimbursement",
         "description": "Mean insurance reimbursement claimed per individual patient encounter.",
         "data_source": "CMS Claim Billing Records",
@@ -82,10 +82,10 @@ FEATURE_CATALOG: Dict[str, Dict[str, Any]] = {
         "is_currency": True,
         "scope": "Provider History",
         "peer_benchmark_applicable": True,
-        "template": "The provider's average reimbursement per claim is {obs_str}, compared with a peer median of {bench_str}."
+        "template": "The provider's average reimbursement per claim across historical encounters is {obs_str}, compared with a peer median of {bench_str}."
     },
     "median_reimbursement": {
-        "display_name": "Median Reimbursement per Claim",
+        "display_name": "Provider Median Reimbursement per Claim",
         "category": "Financial and reimbursement",
         "description": "Median claim reimbursement value, reflecting typical encounter billing without outlier distortion.",
         "data_source": "CMS Claim Billing Records",
@@ -96,7 +96,7 @@ FEATURE_CATALOG: Dict[str, Dict[str, Any]] = {
         "template": "The provider's median reimbursement per claim is {obs_str}, compared with a peer reference median of {bench_str}."
     },
     "max_reimbursement": {
-        "display_name": "Maximum Single Claim Reimbursement",
+        "display_name": "Provider Historical Peak Claim Reimbursement",
         "category": "Financial and reimbursement",
         "description": "Highest reimbursement amount received on any single claim billed by this provider.",
         "data_source": "CMS Claim Billing Records",
@@ -104,7 +104,7 @@ FEATURE_CATALOG: Dict[str, Dict[str, Any]] = {
         "is_currency": True,
         "scope": "Provider History",
         "peer_benchmark_applicable": True,
-        "template": "The provider's peak single claim reimbursement is {obs_str}, compared with a peer median of {bench_str}."
+        "template": "The provider's peak single claim reimbursement across history is {obs_str}, compared with a peer median of {bench_str}."
     },
     "std_reimbursement": {
         "display_name": "Reimbursement Standard Deviation",
@@ -720,6 +720,7 @@ class FeatureExplanationService:
         exchange_rate: float = 83.50,
         is_already_inr: bool = False,
         rank: int = 1,
+        risk_tier: str = "LOW",
     ) -> Dict[str, Any]:
         """
         Generate a fully deterministic, investigator-friendly finding item
@@ -751,28 +752,18 @@ class FeatureExplanationService:
             is_already_inr=is_already_inr,
         )
 
-        has_peer = peer_median is not None and peer_median != "N/A"
-        bench_str = "Not available"
-        if has_peer:
-            bench_str = cls.format_value(
-                feature_name=feature_name,
-                value=peer_median,
-                currency=currency,
-                exchange_rate=exchange_rate,
-                is_already_inr=False,  # Peer median in peer_reference_table is always USD base
-            )
+        # Decouple static CMS Medicare training percentiles from live investigator comparisons.
+        # Live peer comparisons require authentic application peer records which are not yet available.
+        bench_str = "Peer benchmark unavailable — insufficient application data"
+        comp_str = "Peer benchmark unavailable — insufficient application data"
 
         # Build readable sentence without accusing fraud or asserting causality
-        tpl = meta.get("template", "{obs_str}")
-        try:
-            explanation_sentence = tpl.format(obs_str=obs_str, bench_str=bench_str)
-        except Exception:
-            explanation_sentence = f"The observed {display_name.lower()} is {obs_str}."
+        explanation_sentence = f"The provider's historical {display_name.lower()} is observed at {obs_str} (peer reference benchmark unavailable for live application data)."
 
-        # Add objective context clause
+        # Add objective context clause explaining why final score remains LOW despite some risk-elevating factors
         if is_elevating:
-            if has_peer and peer_percentile and peer_percentile >= 90:
-                explanation_sentence += f" This is substantially higher than typical providers ({peer_percentile:.0f}th percentile) and contributed to an elevated risk score."
+            if risk_tier == "LOW":
+                explanation_sentence += " While this historical metric contributed upward pressure in the component tree model, consensus across the ensemble kept the overall provider risk score in the LOW risk tier."
             else:
                 explanation_sentence += " This statistical pattern contributed to an increased model risk score."
         else:
@@ -782,17 +773,21 @@ class FeatureExplanationService:
             "rank": rank,
             "feature_name": feature_name,
             "display_name": display_name,
+            "title": display_name,
             "category": category,
             "scope": scope,
             "severity": severity,
             "observed_value_raw": observed_value,
             "observed_value_formatted": obs_str,
-            "peer_reference_raw": peer_median,
+            "observed_value_display": obs_str,
+            "peer_reference_raw": None,
             "peer_reference_formatted": bench_str,
-            "peer_percentile": peer_percentile,
+            "comparison_display": comp_str,
+            "peer_percentile": None,
             "shap_contribution": round(float(shap_value), 5),
             "effect": "INCREASES_RISK" if is_elevating else "REDUCES_RISK",
             "explanation": explanation_sentence,
+            "finding": explanation_sentence,
             "data_source": meta["data_source"],
             "unit": unit,
         }

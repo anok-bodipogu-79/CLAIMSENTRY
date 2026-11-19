@@ -152,11 +152,13 @@ def test_single_claim_vs_csv_equivalent_processing(client, auth_headers, db_sess
     assert single_res.status_code == 200
     single_data = single_res.json()
 
-    # 2. Equivalent CSV Upload Analysis
+    # 2. Equivalent CSV Upload Analysis (isolated provider/beneficiary to prevent cross-submission duplicate collisions)
+    provider_id_csv = "PRV_EQUIV_02"
+    bene_id_csv = "BENE_EQUIV_02"
     csv_line = (
         "ClaimID,ProviderID,BeneID,ClaimType,ClaimStartDt,ClaimEndDt,AdmissionDt,DischargeDt,"
         "InscClaimAmtReimbursed,DeductibleAmtPaid,AttendingPhysician,ClmDiagnosisCode_1\n"
-        f"{claim_id_csv},{provider_id},{bene_id},Inpatient,2009-05-01,2009-05-06,2009-05-01,2009-05-06,4500.0,500.0,PHY88001,4019\n"
+        f"{claim_id_csv},{provider_id_csv},{bene_id_csv},Inpatient,2009-05-01,2009-05-06,2009-05-01,2009-05-06,4500.0,500.0,PHY88001,4019\n"
     )
     files = {"file": ("equiv_test.csv", csv_line.encode("utf-8"), "text/csv")}
     csv_res = client.post("/api/analyzer/csv", files=files, headers=auth_headers)

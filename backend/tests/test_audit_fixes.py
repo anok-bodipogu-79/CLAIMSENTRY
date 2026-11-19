@@ -206,6 +206,9 @@ def test_single_versus_csv_score_equality(auth_headers, db_session):
     single_tier = single_data["provider_risk_tier"]
 
     # 2. CSV batch prediction with identical claim specifications for same provider
+    # Clean provider claims from single step so CSV evaluates with identical prior history baseline (0 prior claims)
+    db_session.query(Claim).filter(Claim.provider_id == provider_id).delete()
+    db_session.commit()
     csv_claim_id = "CLM_EQUALITY_TEST_2"
     csv_text = (
         f"ClaimID,ProviderID,InscClaimAmtReimbursed,ClaimStartDt,ClaimType\n"
